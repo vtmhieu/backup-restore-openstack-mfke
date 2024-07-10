@@ -1,0 +1,27 @@
+# permissions for end users to view restorepvcs.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/instance: restorepvc-viewer-role
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: backup-restore-openstack-mfke
+    app.kubernetes.io/part-of: backup-restore-openstack-mfke
+    app.kubernetes.io/managed-by: kustomize
+  name: restorepvc-viewer-role
+rules:
+- apiGroups:
+  - snapshot.mfke.io
+  resources:
+  - restorepvcs
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - snapshot.mfke.io
+  resources:
+  - restorepvcs/status
+  verbs:
+  - get

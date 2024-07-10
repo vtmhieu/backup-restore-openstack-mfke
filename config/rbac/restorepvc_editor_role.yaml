@@ -1,0 +1,31 @@
+# permissions for end users to edit restorepvcs.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/instance: restorepvc-editor-role
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: backup-restore-openstack-mfke
+    app.kubernetes.io/part-of: backup-restore-openstack-mfke
+    app.kubernetes.io/managed-by: kustomize
+  name: restorepvc-editor-role
+rules:
+- apiGroups:
+  - snapshot.mfke.io
+  resources:
+  - restorepvcs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - snapshot.mfke.io
+  resources:
+  - restorepvcs/status
+  verbs:
+  - get
