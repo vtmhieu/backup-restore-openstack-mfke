@@ -1,0 +1,7 @@
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshot
+metadata:
+  name: test-snapshot-import
+spec:
+  source:
+    volumeSnapshotContentName: manually-created-snapshot-content

@@ -1,6 +1,10 @@
-
+REGISTRY                    := registry.fke.fptcloud.com
+IMAGE_PREFIX                := $(REGISTRY)/xplat-fke
+IMAGE_NAME 					:= backup-restore-openstack
+REPO_ROOT                   := $(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
+VERSION                     := $(shell cat "${REPO_ROOT}/VERSION")
 # Image URL to use all building/pushing image targets
-IMG ?= controller:latest
+IMG ?= $(IMAGE_PREFIX)/$(IMAGE_NAME):$(VERSION) 
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.29.0
 

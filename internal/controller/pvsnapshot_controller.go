@@ -49,7 +49,12 @@ type PvSnapshotReconciler struct {
 func (r *PvSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	_ = log.FromContext(ctx)
 
+	//pvSnapshot := &snapshotv1beta1.PvSnapshot{}
 	// TODO(user): your logic here
+	// TODO(user): nhan request -> contain pvc name + volumeSnapshotClassName
+	// TODO : check volumeSnapshotClassName in shoot -> if not -> create in shoot
+	// 		-> true -> post request create snapshot
+	// status contains all snapshots in shoot
 
 	return ctrl.Result{}, nil
 }

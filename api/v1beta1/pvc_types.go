@@ -31,8 +31,19 @@ type PvcSpec struct {
 
 // PvcStatus defines the observed state of Pvc
 type PvcStatus struct {
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
 	// total names of pvc in namespace
-	PVCNames []string `json:"pvcNames,omitempty"`
+	PVCList []PvcDetail `json:"pvcList,omitempty"`
+}
+
+// PvcDetail defines the sum-up information of all PVC in shoot cluster
+type PvcDetail struct {
+	Namespace        string   `json:"namespace,omitempty"`
+	PvcName          string   `json:"pvcName,omitempty"`
+	VolumeName       string   `json:"volumeName,omitempty"`
+	StorageClassName string   `json:"storageClass,omitempty"`
+	Resources        string   `json:"resource,omitempty"`
+	AccessMode       []string `json:"accessMode,omitempty"`
 }
 
 //+kubebuilder:object:root=true
