@@ -31,7 +31,19 @@ type PvSnapshotSpec struct {
 
 // PvSnapshotStatus defines the observed state of PvSnapshot
 type PvSnapshotStatus struct {
-	SnapshotNames []string `json:"snapshotNames"`
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
+	Items      []PvSnapshotItem   `json:"items,omitempty"`
+}
+
+type PvSnapshotItem struct {
+	SnapshotName                   string `json:"snapshotName,omitempty"`
+	Namespace                      string `json:"namespace,omitempty"`
+	PersistenVolumeClaimName       string `json:"persistentVolumeClaimName,omitempty"`
+	VolumeSnapshotClassName        string `json:"volumeSnapshotClassName,omitempty"`
+	BoundVolumeSnapshotContentName string `json:"boundVolumeSnapshotContentName,omitempty"`
+	CreationTime                   string `json:"creationTime,omitempty"`
+	ReadyToUse                     string `json:"readyToUse,omitempty"`
+	RestoreSize                    string `json:"restoreSize,omitempty"`
 }
 
 //+kubebuilder:object:root=true

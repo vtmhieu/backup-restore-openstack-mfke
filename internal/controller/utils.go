@@ -9,8 +9,12 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 
+	snapshotv1beta1 "github.com/vtmhieu/backup-restore-openstack-mfke.git/api/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -72,26 +76,26 @@ func CreateShootKubeClient(ctx context.Context, shootKubeconfigDataString, clust
 	return shootClientset, nil
 }
 
-// // Create dynamic shoot kube-client from shoot kubeconfig file
-// func (r *TrivyReconciler) CreateDynamicKubeClient(ctx context.Context, shootKubeconfigDataString string) (*dynamic.DynamicClient, error) {
-// 	shootKubeconfigDataByte := []byte(shootKubeconfigDataString)
-// 	shootKubeconfigPath := "/tmp/kubeconfig"
-// 	// Write the kubeconfig data to a temporary file
-// 	err := os.WriteFile(shootKubeconfigPath, shootKubeconfigDataByte, 0644)
-// 	if err != nil {
-// 		return nil, fmt.Errorf("unable to write kubeconfig data to temporary file: %v", err)
-// 	}
-// 	shootConfig, err := clientcmd.BuildConfigFromFlags("", shootKubeconfigPath)
-// 	if err != nil {
-// 		return nil, fmt.Errorf("unable to build shoot config from kubeconfig file: %v", err)
-// 	}
-// 	dynamicClient, err := dynamic.NewForConfig(shootConfig)
-// 	if err != nil {
-// 		fmt.Printf("Error creating dynamic client: %s\n", err)
-// 		os.Exit(1)
-// 	}
-// 	return dynamicClient, nil
-// }
+// Create dynamic shoot kube-client from shoot kubeconfig file
+func CreateDynamicKubeClient(ctx context.Context, shootKubeconfigDataString string) (*dynamic.DynamicClient, error) {
+	shootKubeconfigDataByte := []byte(shootKubeconfigDataString)
+	shootKubeconfigPath := "/tmp/kubeconfig"
+	// Write the kubeconfig data to a temporary file
+	err := os.WriteFile(shootKubeconfigPath, shootKubeconfigDataByte, 0644)
+	if err != nil {
+		return nil, fmt.Errorf("unable to write kubeconfig data to temporary file: %v", err)
+	}
+	shootConfig, err := clientcmd.BuildConfigFromFlags("", shootKubeconfigPath)
+	if err != nil {
+		return nil, fmt.Errorf("unable to build shoot config from kubeconfig file: %v", err)
+	}
+	dynamicClient, err := dynamic.NewForConfig(shootConfig)
+	if err != nil {
+		fmt.Printf("Error creating dynamic client: %s\n", err)
+		os.Exit(1)
+	}
+	return dynamicClient, nil
+}
 
 // func get namespace in shoot
 func GetNamespace(shootClientSet *kubernetes.Clientset) ([]string, error) {
@@ -121,4 +125,117 @@ func convertAccessModes(accessModes []corev1.PersistentVolumeAccessMode) []strin
 		modes = append(modes, string(mode))
 	}
 	return modes
+}
+
+func getVolumeSnapShot(dynamicClienSet *dynamic.DynamicClient,
+	resourceNamespace string) ([]snapshotv1beta1.PvSnapshotItem, error) {
+	pvSnapshotItemList := []snapshotv1beta1.PvSnapshotItem{}
+	// // Describe the custom resource
+	gvr := schema.GroupVersionResource{
+		Group:    "snapshot.storage.k8s.io",
+		Version:  "v1",
+		Resource: VolumeSnapshot,
+	}
+	resourceClient := dynamicClienSet.Resource(gvr).Namespace(resourceNamespace)
+	resourceList, err := resourceClient.List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		fmt.Printf("Error describing custom resource: %s\n", err)
+		fmt.Printf("The crds volumesnapshots is not existed in shoot cluster")
+		return pvSnapshotItemList, err
+	}
+	for _, item := range resourceList.Items {
+		pvSnapshot := snapshotv1beta1.PvSnapshotItem{}
+		// get metadata time create
+		metadata, found, err := unstructured.NestedMap(item.Object, "metadata")
+		if err != nil || !found {
+			fmt.Println("Error accessing metadata:", err)
+			continue
+		}
+		// get name of snapshot
+		snapshotName, found, err := unstructured.NestedString(metadata, "name")
+		if err != nil || !found {
+			fmt.Println("Error accessing metadata name:", err)
+			continue
+		}
+		pvSnapshot.SnapshotName = snapshotName
+		// get namespace of snapshot
+		namespace, found, err := unstructured.NestedString(metadata, "namespace")
+		if err != nil || !found {
+			fmt.Println("Error accessing namespace:", err)
+			continue
+		}
+		pvSnapshot.Namespace = namespace
+		// get pvc name
+		//get spec
+		spec, found, err := unstructured.NestedMap(item.Object, "spec")
+		if err != nil || !found {
+			fmt.Println("Error accessing spec:", err)
+			continue
+		}
+		source, found, err := unstructured.NestedMap(spec, "source")
+		if err != nil || !found {
+			fmt.Println("Error accessing spec source:", err)
+			continue
+		} else {
+			pvcName, found, err := unstructured.NestedString(source, "persistentVolumeClaimName")
+			if err != nil || !found {
+				fmt.Println("Error accessing spec source:", err)
+				continue
+			}
+			pvSnapshot.PersistenVolumeClaimName = pvcName
+		}
+		// get volumeSnapshotClassName
+		volumeSnapshotClassName, found, err := unstructured.NestedString(spec, "volumeSnapshotClassName")
+		if err != nil || !found {
+			fmt.Println("Error accessing spec volumeSnapshotClassName:", err)
+			pvSnapshot.VolumeSnapshotClassName = Unknown
+		} else {
+			pvSnapshot.VolumeSnapshotClassName = volumeSnapshotClassName
+		}
+
+		// get status
+		status, found, err := unstructured.NestedMap(item.Object, "status")
+		if err != nil || !found {
+			fmt.Println("Error accessing status:", err)
+			continue
+		}
+		// get snapshotContent
+		snapshotContent, found, err := unstructured.NestedString(status, "boundVolumeSnapshotContentName")
+		if err != nil || !found {
+			fmt.Println("Error accessing status snapshotContent:", err)
+			pvSnapshot.BoundVolumeSnapshotContentName = Unknown
+		} else {
+			pvSnapshot.BoundVolumeSnapshotContentName = snapshotContent
+		}
+		// get creation time
+		creationTimestamp, found, err := unstructured.NestedString(status, "creationTime")
+		if err != nil || !found {
+			fmt.Println("Error accessing metadata creationTimestamp:", err)
+			pvSnapshot.CreationTime = Unknown
+		} else {
+			pvSnapshot.CreationTime = creationTimestamp
+		}
+
+		// get readyToUse
+		readyToUse, found, err := unstructured.NestedString(status, "readyToUse")
+		if err != nil || !found {
+			fmt.Println("Error accessing status readyToUse:", err)
+			pvSnapshot.ReadyToUse = Unknown
+		} else {
+			pvSnapshot.ReadyToUse = readyToUse
+		}
+
+		// get restoreSize
+		restoreSize, found, err := unstructured.NestedString(status, "restoreSize")
+		if err != nil || !found {
+			fmt.Println("Error accessing status restoreSize:", err)
+			pvSnapshot.RestoreSize = Unknown
+		} else {
+			pvSnapshot.RestoreSize = restoreSize
+		}
+
+		// add to return list
+		pvSnapshotItemList = append(pvSnapshotItemList, pvSnapshot)
+	}
+	return pvSnapshotItemList, nil
 }
