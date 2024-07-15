@@ -73,7 +73,7 @@ func (r *PvSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	if !controllerutil.ContainsFinalizer(pvSnapshot, PvSnapshotFinalizerName) {
 		controllerutil.AddFinalizer(pvSnapshot, PvSnapshotFinalizerName)
 		if err := r.Update(ctx, pvSnapshot); err != nil {
-			log.Error(err, "Failed to update pvc controller finalizer")
+			log.Error(err, "Failed to update pvsnapshot controller finalizer")
 			return ctrl.Result{}, err
 		}
 		if err := r.Get(ctx, req.NamespacedName, pvSnapshot); err != nil {
@@ -111,18 +111,18 @@ func (r *PvSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 				Message: fmt.Sprintf("Failed to reconcile for the custom resource (%s): (%s)", pvSnapshot.Name, err)})
 
 			if err := r.Status().Update(ctx, pvSnapshot); err != nil {
-				log.Error(err, "Failed to update PVC crds status")
+				log.Error(err, "Failed to update PVsnapshot crds status")
 				return ctrl.Result{}, err
 			}
 			return ctrl.Result{}, err
 		}
-		log.V(1).Info("Reconcile", "PVC list has been successfully updated", req.Namespace)
+		log.V(1).Info("Reconcile", "PVSnapshot list has been successfully updated", req.Namespace)
 		meta.SetStatusCondition(&pvSnapshot.Status.Conditions, metav1.Condition{Type: "Available",
 			Status: metav1.ConditionTrue, Reason: "Reconciling",
-			Message: fmt.Sprintf("PVC List %s in shoot %s is updated", pvSnapshot.Name, pvSnapshot.Namespace)})
+			Message: fmt.Sprintf("PVSnapshot List %s in shoot %s is updated", pvSnapshot.Name, pvSnapshot.Namespace)})
 		klog.Infof("Status of PVC %v", pvSnapshot.Status.Conditions)
 		if err := r.Status().Update(ctx, pvSnapshot); err != nil {
-			log.Error(err, "Failed to update PVC crds status")
+			log.Error(err, "Failed to update PVSnapshot crds status")
 			return ctrl.Result{}, err
 		}
 

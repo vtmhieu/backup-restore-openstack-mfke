@@ -217,10 +217,10 @@ func getVolumeSnapShot(dynamicClienSet *dynamic.DynamicClient,
 		}
 
 		// get readyToUse
-		readyToUse, found, err := unstructured.NestedString(status, "readyToUse")
+		readyToUse, found, err := unstructured.NestedBool(status, "readyToUse")
 		if err != nil || !found {
 			fmt.Println("Error accessing status readyToUse:", err)
-			pvSnapshot.ReadyToUse = Unknown
+			pvSnapshot.ReadyToUse = false
 		} else {
 			pvSnapshot.ReadyToUse = readyToUse
 		}

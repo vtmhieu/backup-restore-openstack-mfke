@@ -128,7 +128,7 @@ spec:
                     persistentVolumeClaimName:
                       type: string
                     readyToUse:
-                      type: string
+                      type: boolean
                     restoreSize:
                       type: string
                     snapshotName:

@@ -42,7 +42,7 @@ type PvSnapshotItem struct {
 	VolumeSnapshotClassName        string `json:"volumeSnapshotClassName,omitempty"`
 	BoundVolumeSnapshotContentName string `json:"boundVolumeSnapshotContentName,omitempty"`
 	CreationTime                   string `json:"creationTime,omitempty"`
-	ReadyToUse                     string `json:"readyToUse,omitempty"`
+	ReadyToUse                     bool   `json:"readyToUse,omitempty"`
 	RestoreSize                    string `json:"restoreSize,omitempty"`
 }
 
