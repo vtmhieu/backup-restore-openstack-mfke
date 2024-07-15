@@ -187,7 +187,8 @@ func (r *CreateSnapshotReconciler) ReconcileCreateSnapshot(ctx context.Context, 
 	if err != nil {
 		return fmt.Errorf("unable to create dynamic shoot client set %s: %v", clusterName, err)
 	}
-	volumeSnapshotClassName, err := r.CheckVolumeSnapshotClasses(dynamicClientSet)
+	volumeSnapshotClassName, err := createVolumeSnapshotClasses(dynamicClientSet)
+
 	return nil
 }
 

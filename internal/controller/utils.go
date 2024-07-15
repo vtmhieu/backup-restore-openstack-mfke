@@ -14,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
@@ -127,8 +128,88 @@ func convertAccessModes(accessModes []corev1.PersistentVolumeAccessMode) []strin
 	return modes
 }
 
-func getVolumeSnapshotClassesExisted() (bool, string, error) {
+// func getVolumeSnapshotClassesExisted(dynamicClienSet *dynamic.DynamicClient) (string, error) {
+// 	volumeSnapshotClassesName := ""
+// 	gvr := schema.GroupVersionResource{
+// 		Group:    "snapshot.storage.k8s.io",
+// 		Version:  "v1",
+// 		Resource: VolumeSnapshotClasses,
+// 	}
+// 	resourceClient := dynamicClienSet.Resource(gvr)
+// 	resourceList, err := resourceClient.List(context.TODO(), metav1.ListOptions{})
+// 	if err != nil {
+// 		fmt.Printf("Error describing custom resource: %s\n", err)
+// 		fmt.Printf("The crds volumesnapshots is not existed in shoot cluster")
+// 	}
+// 	if len(resourceList.Items) == 0 {
+// 		volumeSnapshotClassesName, err := createVolumeSnapshotClasses(dynamicClienSet)
+// 		if err != nil {
+// 			return "", err
+// 		}
+// 		return volumeSnapshotClassesName, nil
+// 	} else {
+// 		volumeSnapshotClassesExisted := false
+// 		// check name + default mode
+// 		for _, item := range resourceList.Items {
+// 			metadata, found, err := unstructured.NestedMap(item.Object, "metadata")
+// 			if err != nil || !found {
+// 				fmt.Println("Error accessing metadata:", err)
+// 				continue
+// 			}
+// 			// get name
+// 			snapshotClassName, found, err := unstructured.NestedString(metadata, "name")
+// 			if err != nil || !found {
+// 				fmt.Println("Error accessing metadata name:", err)
+// 				continue
+// 			}
+// 			// get annotations
+// 			annotations, found, err := unstructured.NestedMap(metadata, "annotations")
+// 			//
+// 		}
 
+// 	}
+// 	return volumeSnapshotClassesName, nil
+// }
+
+func createVolumeSnapshotClasses(dynamicClienSet *dynamic.DynamicClient) (string, error) {
+	// Define the GroupVersionResource for VolumeSnapshotClass
+	gvr := schema.GroupVersionResource{
+		Group:    "snapshot.storage.k8s.io",
+		Version:  "v1",
+		Resource: "volumesnapshotclasses",
+	}
+
+	// Read the YAML file
+	yamlFile := `
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshotClass
+metadata:
+  name: csi-cinder-snapclass
+  annotations:
+    snapshot.storage.kubernetes.io/is-default-class: "true"
+driver: cinder.csi.openstack.org
+deletionPolicy: Delete
+parameters:
+  type: Premium-SSD
+  force-create: "true"
+`
+
+	// Decode the YAML file
+	decoder := yaml.NewYAMLOrJSONDecoder(strings.NewReader(yamlFile), 100)
+	obj := &unstructured.Unstructured{}
+	if err := decoder.Decode(obj); err != nil {
+		fmt.Printf("Error decoding YAML file: %v\n", err)
+		return "", err
+	}
+
+	// Apply the resource to the cluster
+	namespace := "" // VolumeSnapshotClass is a cluster-scoped resource
+	_, err := dynamicClienSet.Resource(gvr).Namespace(namespace).Create(context.TODO(), obj, metav1.CreateOptions{})
+	if err != nil {
+		fmt.Printf("Error creating resource: %v\n", err)
+		return "", err
+	}
+	return "csi-cinder-snapclass", nil
 }
 
 func getVolumeSnapShot(dynamicClienSet *dynamic.DynamicClient,

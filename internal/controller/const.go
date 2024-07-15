@@ -9,8 +9,8 @@ const (
 	PvSnapshotReconcileAnnotation = "snapshotv1beta1.mfke.io/pvsnapshot-reconcile"
 	RestorePVCReconcileAnnotation = "snapshotv1beta1.mfke.io/restorePvc-reconcile"
 
-	VolumeSnapshotClassName = "volumesnapshotclasses"
-	VolumeSnapshot          = "volumesnapshots"
+	VolumeSnapshotClasses = "volumesnapshotclasses"
+	VolumeSnapshot        = "volumesnapshots"
 
 	Unknown = "N/A"
 )
