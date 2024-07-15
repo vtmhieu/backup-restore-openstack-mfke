@@ -127,6 +127,10 @@ func convertAccessModes(accessModes []corev1.PersistentVolumeAccessMode) []strin
 	return modes
 }
 
+func getVolumeSnapshotClassesExisted() (bool, string, error) {
+
+}
+
 func getVolumeSnapShot(dynamicClienSet *dynamic.DynamicClient,
 	resourceNamespace string) ([]snapshotv1beta1.PvSnapshotItem, error) {
 	pvSnapshotItemList := []snapshotv1beta1.PvSnapshotItem{}

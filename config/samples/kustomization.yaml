@@ -3,4 +3,5 @@ resources:
 - snapshot_v1beta1_pvsnapshot.yaml
 - snapshot_v1beta1_pvc.yaml
 - snapshot_v1beta1_restorepvc.yaml
+- snapshot_v1beta1_createsnapshot.yaml
 #+kubebuilder:scaffold:manifestskustomizesamples

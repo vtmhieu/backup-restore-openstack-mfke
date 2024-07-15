@@ -1,0 +1,13 @@
+apiVersion: snapshot.mfke.io/v1beta1
+kind: CreateSnapshot
+metadata:
+  labels:
+    app.kubernetes.io/name: createsnapshot
+    app.kubernetes.io/instance: createsnapshot-sample
+    app.kubernetes.io/part-of: backup-restore-openstack-mfke
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: backup-restore-openstack-mfke
+  name: createsnapshot-sample
+spec:
+  name: test-snapshot
+  pvcName: ""
