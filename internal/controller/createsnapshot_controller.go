@@ -19,14 +19,18 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/klog"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -177,29 +181,65 @@ func (r *CreateSnapshotReconciler) ReconcileCreateSnapshot(ctx context.Context, 
 	if err != nil {
 		return fmt.Errorf("unable to get shoot secret data kubeconfig in ns %s: %v", clusterName, err)
 	}
-	// create shoot client set from this kubeconfig data
-	shootClientSet, err := CreateShootKubeClient(ctx, shootKubeconfigDataString, clusterName)
-	if err != nil {
-		return fmt.Errorf("unable to create shoot client set %s: %v", clusterName, err)
-	}
+	// // create shoot client set from this kubeconfig data
+	// shootClientSet, err := CreateShootKubeClient(ctx, shootKubeconfigDataString, clusterName)
+	// if err != nil {
+	// 	return fmt.Errorf("unable to create shoot client set %s: %v", clusterName, err)
+	// }
 	// create dynamic client from this kubeconfig data -> send request for crds
 	dynamicClientSet, err := CreateDynamicKubeClient(ctx, shootKubeconfigDataString)
 	if err != nil {
 		return fmt.Errorf("unable to create dynamic shoot client set %s: %v", clusterName, err)
 	}
 	volumeSnapshotClassName, err := createVolumeSnapshotClasses(dynamicClientSet)
+	if err != nil {
+		return fmt.Errorf("unable to create volumeSnapshotClasses ")
 
+	}
+
+	// create Snapshot base on input
+	err = r.createSnapshot(dynamicClientSet, createSnapshot.Spec.Name, volumeSnapshotClassName, createSnapshot.Spec.PvcName, createSnapshot.Spec.Namespace)
+	if err != nil {
+		return fmt.Errorf("unable to create snap shot %s for persistentVolumeName %s in namespace %s", createSnapshot.Spec.Name, createSnapshot.Spec.PvcName, createSnapshot.Spec.Namespace)
+	}
 	return nil
 }
 
-func (r *CreateSnapshotReconciler) CheckVolumeSnapshotClasses(dynamicClienSet *dynamic.DynamicClient) (string, error) {
-	var err error
-	var volumeSnapshotClass string
-	// check if volumeSnapshotClasses existed
+func (r *CreateSnapshotReconciler) createSnapshot(dynamicClientSet *dynamic.DynamicClient, snapshotName string, volumeSnapshotClassName string, pvcName string, namespace string) error {
+	// Define the GroupVersionResource for VolumeSnapshotClass
+	gvr := schema.GroupVersionResource{
+		Group:    "snapshot.storage.k8s.io",
+		Version:  "v1",
+		Resource: VolumeSnapshot,
+	}
 
-	// check if setting default
+	// Create YAML content with user input
+	yamlContent := fmt.Sprintf(`
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshot
+metadata:
+  name: %s
+spec:
+  volumeSnapshotClassName: %s
+  source:
+    persistentVolumeClaimName: %s
+`, snapshotName, volumeSnapshotClassName, pvcName)
 
-	return volumeSnapshotClass, err
+	// Decode the YAML content
+	decoder := yaml.NewYAMLOrJSONDecoder(strings.NewReader(yamlContent), 100)
+	obj := &unstructured.Unstructured{}
+	if err := decoder.Decode(obj); err != nil {
+		fmt.Printf("Error decoding YAML content: %v\n", err)
+		return err
+	}
+
+	// Apply the resource to the cluster
+	_, err := dynamicClientSet.Resource(gvr).Namespace(namespace).Create(context.TODO(), obj, metav1.CreateOptions{})
+	if err != nil {
+		fmt.Printf("Error creating resource: %v\n", err)
+		return err
+	}
+	return nil
 }
 
 // SetupWithManager sets up the controller with the Manager.

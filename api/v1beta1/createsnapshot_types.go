@@ -25,8 +25,9 @@ import (
 
 // CreateSnapshotSpec defines the desired state of CreateSnapshot
 type CreateSnapshotSpec struct {
-	Name    string `json:"name,omitempty"`
-	PvcName string `json:"pvcName,omitempty"`
+	Name      string `json:"name,omitempty"`
+	PvcName   string `json:"pvcName,omitempty"`
+	Namespace string `json:"namespace,omitempty"`
 }
 
 // CreateSnapshotStatus defines the observed state of CreateSnapshot

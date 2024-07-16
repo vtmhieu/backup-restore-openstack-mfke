@@ -128,49 +128,6 @@ func convertAccessModes(accessModes []corev1.PersistentVolumeAccessMode) []strin
 	return modes
 }
 
-// func getVolumeSnapshotClassesExisted(dynamicClienSet *dynamic.DynamicClient) (string, error) {
-// 	volumeSnapshotClassesName := ""
-// 	gvr := schema.GroupVersionResource{
-// 		Group:    "snapshot.storage.k8s.io",
-// 		Version:  "v1",
-// 		Resource: VolumeSnapshotClasses,
-// 	}
-// 	resourceClient := dynamicClienSet.Resource(gvr)
-// 	resourceList, err := resourceClient.List(context.TODO(), metav1.ListOptions{})
-// 	if err != nil {
-// 		fmt.Printf("Error describing custom resource: %s\n", err)
-// 		fmt.Printf("The crds volumesnapshots is not existed in shoot cluster")
-// 	}
-// 	if len(resourceList.Items) == 0 {
-// 		volumeSnapshotClassesName, err := createVolumeSnapshotClasses(dynamicClienSet)
-// 		if err != nil {
-// 			return "", err
-// 		}
-// 		return volumeSnapshotClassesName, nil
-// 	} else {
-// 		volumeSnapshotClassesExisted := false
-// 		// check name + default mode
-// 		for _, item := range resourceList.Items {
-// 			metadata, found, err := unstructured.NestedMap(item.Object, "metadata")
-// 			if err != nil || !found {
-// 				fmt.Println("Error accessing metadata:", err)
-// 				continue
-// 			}
-// 			// get name
-// 			snapshotClassName, found, err := unstructured.NestedString(metadata, "name")
-// 			if err != nil || !found {
-// 				fmt.Println("Error accessing metadata name:", err)
-// 				continue
-// 			}
-// 			// get annotations
-// 			annotations, found, err := unstructured.NestedMap(metadata, "annotations")
-// 			//
-// 		}
-
-// 	}
-// 	return volumeSnapshotClassesName, nil
-// }
-
 func createVolumeSnapshotClasses(dynamicClienSet *dynamic.DynamicClient) (string, error) {
 	// Define the GroupVersionResource for VolumeSnapshotClass
 	gvr := schema.GroupVersionResource{
