@@ -63,6 +63,7 @@ type CreateSnapshotReconciler struct {
 func (r *CreateSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 	createSnapshot := &snapshotv1beta1.CreateSnapshot{}
+	// pvSnapshot := &snapshotv1beta1.PvSnapshot{}
 	log.Info("Reconcile", "req", req)
 
 	// Check existance + finalizer
@@ -73,23 +74,23 @@ func (r *CreateSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		}
 		return ctrl.Result{}, fmt.Errorf("error retrieving object from store: %w", err)
 	}
-	if !controllerutil.ContainsFinalizer(createSnapshot, PvcFinalizerName) {
-		controllerutil.AddFinalizer(createSnapshot, PvcFinalizerName)
+	if !controllerutil.ContainsFinalizer(createSnapshot, CreateSnapshotFinalizerName) {
+		controllerutil.AddFinalizer(createSnapshot, CreateSnapshotFinalizerName)
 		if err := r.Update(ctx, createSnapshot); err != nil {
-			log.Error(err, "Failed to update pvc controller finalizer")
+			log.Error(err, "Failed to update createSnapshot controller finalizer")
 			return ctrl.Result{}, err
 		}
 		if err := r.Get(ctx, req.NamespacedName, createSnapshot); err != nil {
-			log.Error(err, "Failed to re-fetch PVC list in shoot")
+			log.Error(err, "Failed to re-fetch createSnapshot list in shoot")
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{}, nil
 	}
 	if createSnapshot.Status.Conditions == nil || len(createSnapshot.Status.Conditions) == 0 {
 		meta.SetStatusCondition(&createSnapshot.Status.Conditions, metav1.Condition{Type: "Available", Status: metav1.ConditionUnknown, Reason: "Reconciling", Message: "Starting reconciliation"})
-		klog.Infof("Set Status Condition of PVC crd %v", createSnapshot.Status.Conditions)
+		klog.Infof("Set Status Condition of createSnapshot crd %v", createSnapshot.Status.Conditions)
 		if err := r.Status().Update(ctx, createSnapshot); err != nil {
-			log.Error(err, "Failed to update PVC status condition")
+			log.Error(err, "Failed to update createSnapshot status condition")
 			return ctrl.Result{}, err
 		}
 
@@ -99,7 +100,7 @@ func (r *CreateSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		// your changes to the latest version and try again" which would re-trigger the reconciliation
 		// if we try to update it again in the following operations
 		if err := r.Get(ctx, req.NamespacedName, createSnapshot); err != nil {
-			log.Error(err, "Failed to re-fetch PVC list")
+			log.Error(err, "Failed to re-fetch createSnapshot list")
 			return ctrl.Result{}, err
 		}
 		klog.Infof("Fetch of PVC %v", createSnapshot.Status.Conditions)
@@ -108,13 +109,13 @@ func (r *CreateSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	// define the finalizer for PVC
 	if createSnapshot.ObjectMeta.DeletionTimestamp.IsZero() {
 		if err := r.ReconcileCreateSnapshot(ctx, r.Client, createSnapshot); err != nil {
-			klog.Info("Reconcile PVC Failed")
+			klog.Info("Reconcile createSnapshot Failed")
 			meta.SetStatusCondition(&createSnapshot.Status.Conditions, metav1.Condition{Type: "Available",
 				Status: metav1.ConditionFalse, Reason: "Reconciling",
 				Message: fmt.Sprintf("Failed to reconcile for the custom resource (%s): (%s)", createSnapshot.Name, err)})
 
 			if err := r.Status().Update(ctx, createSnapshot); err != nil {
-				log.Error(err, "Failed to update PVC crds status")
+				log.Error(err, "Failed to update createSnapshot crds status")
 				return ctrl.Result{}, err
 			}
 			return ctrl.Result{}, err
@@ -123,9 +124,9 @@ func (r *CreateSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		meta.SetStatusCondition(&createSnapshot.Status.Conditions, metav1.Condition{Type: "Available",
 			Status: metav1.ConditionTrue, Reason: "Reconciling",
 			Message: fmt.Sprintf("PVC List %s in shoot %s is updated", createSnapshot.Name, createSnapshot.Namespace)})
-		klog.Infof("Status of PVC %v", createSnapshot.Status.Conditions)
+		klog.Infof("Status of createSnapshot %v", createSnapshot.Status.Conditions)
 		if err := r.Status().Update(ctx, createSnapshot); err != nil {
-			log.Error(err, "Failed to update PVC crds status")
+			log.Error(err, "Failed to update createSnapshot crds status")
 			return ctrl.Result{}, err
 		}
 
@@ -136,7 +137,7 @@ func (r *CreateSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			Message: fmt.Sprintf("Performing finalizer operations for the custom resource: %s ", createSnapshot.Name)})
 
 		if err := r.Status().Update(ctx, createSnapshot); err != nil {
-			log.Error(err, "Failed to update PVC crds status")
+			log.Error(err, "Failed to update createSnapshot crds status")
 			return ctrl.Result{}, err
 		}
 		// The object is being deleted
@@ -148,7 +149,7 @@ func (r *CreateSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		}
 		if !ns.ObjectMeta.DeletionTimestamp.IsZero() {
 			// remove our finalizer from the list and update it.
-			controllerutil.RemoveFinalizer(createSnapshot, PvcFinalizerName)
+			controllerutil.RemoveFinalizer(createSnapshot, CreateSnapshotFinalizerName)
 			if err := r.Update(ctx, createSnapshot); err != nil {
 				return ctrl.Result{}, err
 			}
@@ -159,8 +160,8 @@ func (r *CreateSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			// }
 			// log.V(1).Info("Reconcile", "Falco is deleted successfully in shoot", req.Namespace)
 			// remove our finalizer from the list and update it.
-			if ok := controllerutil.RemoveFinalizer(createSnapshot, PvcFinalizerName); !ok {
-				log.Error(err, "Failed to remove finalizer for PVC crds")
+			if ok := controllerutil.RemoveFinalizer(createSnapshot, CreateSnapshotFinalizerName); !ok {
+				log.Error(err, "Failed to remove finalizer for createSnapshot crds")
 				return ctrl.Result{Requeue: true}, nil
 			}
 			if err := r.Update(ctx, createSnapshot); err != nil {
@@ -200,7 +201,16 @@ func (r *CreateSnapshotReconciler) ReconcileCreateSnapshot(ctx context.Context, 
 	// create Snapshot base on input
 	err = r.createSnapshot(dynamicClientSet, createSnapshot.Spec.Name, volumeSnapshotClassName, createSnapshot.Spec.PvcName, createSnapshot.Spec.Namespace)
 	if err != nil {
+		createSnapshot.Status.Success = false
 		return fmt.Errorf("unable to create snap shot %s for persistentVolumeName %s in namespace %s", createSnapshot.Spec.Name, createSnapshot.Spec.PvcName, createSnapshot.Spec.Namespace)
+	}
+
+	createSnapshot.Status.Success = true
+	if createSnapshot.Annotations[CreateSnapshotReconcileAnnotation] == "true" {
+		delete(createSnapshot.Annotations, CreateSnapshotReconcileAnnotation)
+		if err := r.Update(ctx, createSnapshot); err != nil {
+			return fmt.Errorf("error to delete annotation %s in createSnapshot resource: [%v]", createSnapshot, err)
+		}
 	}
 	return nil
 }

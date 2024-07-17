@@ -26,14 +26,18 @@ import (
 // RestorePvcSpec defines the desired state of RestorePvc
 type RestorePvcSpec struct {
 	// Define fields for RestorePVC spec
-	SnapshotName string `json:"snapshotName"`
-	Namespace    string `json:"namespace"`
+	RestorePvcName string   `json:"restorePvcName,omitempty"`
+	SnapshotName   string   `json:"snapshotName,omitempty"`
+	Namespace      string   `json:"namespace,omitempty"`
+	AccessModes    []string `json:"accessModes,omitempty"`
+	Storage        string   `json:"storage,omitempty"`
 }
 
 // RestorePvcStatus defines the observed state of RestorePvc
 type RestorePvcStatus struct {
 	// Define fields for RestorePVC status
-	RestoredPVCName string `json:"restoredPvcName"`
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
+	Success    bool               `json:"restoredPvcName,omitempty"`
 }
 
 //+kubebuilder:object:root=true

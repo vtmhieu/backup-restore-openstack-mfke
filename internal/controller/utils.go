@@ -281,3 +281,10 @@ func getVolumeSnapShot(dynamicClienSet *dynamic.DynamicClient,
 	}
 	return pvSnapshotItemList, nil
 }
+
+// // get pvSnapshot crds
+// func (r *CreateSnapshotReconciler) getPvSnapshotCRDS(dynamicClient *dynamic.DynamicClient, namespace string) (string, error) {
+// 	pvSnapshotCrdName := ""
+
+// 	return pvSnapshotCrdName, nil
+// }

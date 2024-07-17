@@ -216,7 +216,7 @@ func (r *PvSnapshotReconciler) ReconcilePvSnapshot(ctx context.Context, c client
 	if pvSnapshot.Annotations[PvSnapshotReconcileAnnotation] == "true" {
 		delete(pvSnapshot.Annotations, PvcReconcileAnnotation)
 		if err := r.Update(ctx, pvSnapshot); err != nil {
-			return fmt.Errorf("error to delete annotation %s in trivy resource: [%v]", PvcReconcileAnnotation, err)
+			return fmt.Errorf("error to delete annotation %s in pvSnapshot resource: [%v]", PvcReconcileAnnotation, err)
 		}
 	}
 	return nil

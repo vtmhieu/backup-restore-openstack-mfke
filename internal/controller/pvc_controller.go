@@ -206,7 +206,7 @@ func (r *PvcReconciler) ReconcilePvc(ctx context.Context, c client.Client, pvc *
 	if pvc.Annotations[PvcReconcileAnnotation] == "true" {
 		delete(pvc.Annotations, PvcReconcileAnnotation)
 		if err := r.Update(ctx, pvc); err != nil {
-			return fmt.Errorf("error to delete annotation %s in trivy resource: [%v]", PvcReconcileAnnotation, err)
+			return fmt.Errorf("error to delete annotation %s in pvc resource: [%v]", PvcReconcileAnnotation, err)
 		}
 	}
 	return nil
