@@ -15,5 +15,7 @@ const (
 	VolumeSnapshot        = "volumesnapshots"
 	PersistentVolumeClaim = "persistentvolumeclaim"
 
+	volumeSnapshotClassName = "csi-cinder-snapclass"
+
 	Unknown = "N/A"
 )

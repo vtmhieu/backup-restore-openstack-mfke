@@ -70,7 +70,7 @@ spec:
         - /manager
         args:
         - --leader-elect
-        image: registry.fke.fptcloud.com/xplat-fke/backup-restore-openstack:v0.1.0-dev09
+        image: registry.fke.fptcloud.com/xplat-fke/backup-restore-openstack:v0.1.0-dev12
         name: manager
         securityContext:
           allowPrivilegeEscalation: false

@@ -214,7 +214,7 @@ func (r *PvSnapshotReconciler) ReconcilePvSnapshot(ctx context.Context, c client
 	pvSnapshot.Status = pvSnapshotStatus
 
 	if pvSnapshot.Annotations[PvSnapshotReconcileAnnotation] == "true" {
-		delete(pvSnapshot.Annotations, PvcReconcileAnnotation)
+		delete(pvSnapshot.Annotations, PvSnapshotReconcileAnnotation)
 		if err := r.Update(ctx, pvSnapshot); err != nil {
 			return fmt.Errorf("error to delete annotation %s in pvSnapshot resource: [%v]", PvcReconcileAnnotation, err)
 		}

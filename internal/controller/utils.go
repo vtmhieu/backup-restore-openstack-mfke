@@ -128,6 +128,41 @@ func convertAccessModes(accessModes []corev1.PersistentVolumeAccessMode) []strin
 	return modes
 }
 
+func checkVolumeSnapshotClasses(dynamicClientSet *dynamic.DynamicClient) (bool, error) {
+	volumeSnapshotClassesExisted := false
+	// Define the GroupVersionResource for VolumeSnapshotClass
+	gvr := schema.GroupVersionResource{
+		Group:    "snapshot.storage.k8s.io",
+		Version:  "v1",
+		Resource: "volumesnapshotclasses",
+	}
+	resourceClient := dynamicClientSet.Resource(gvr)
+	resourceList, err := resourceClient.List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		fmt.Printf("Error describing custom resource: %s\n", err)
+		fmt.Printf("The crds volumesnapshots is not existed in shoot cluster")
+		return volumeSnapshotClassesExisted, err
+	}
+	for _, item := range resourceList.Items {
+		metadata, found, err := unstructured.NestedMap(item.Object, "metadata")
+		if err != nil || !found {
+			fmt.Println("Error accessing metadata:", err)
+			continue
+		}
+		// get name of snapshot
+		className, found, err := unstructured.NestedString(metadata, "name")
+		if err != nil || !found {
+			fmt.Println("Error accessing metadata name:", err)
+			continue
+		}
+		if className == "csi-cinder-snapclass" {
+			volumeSnapshotClassesExisted = true
+			break
+		}
+	}
+	return volumeSnapshotClassesExisted, nil
+}
+
 func createVolumeSnapshotClasses(dynamicClienSet *dynamic.DynamicClient) (string, error) {
 	// Define the GroupVersionResource for VolumeSnapshotClass
 	gvr := schema.GroupVersionResource{
@@ -168,6 +203,47 @@ parameters:
 	}
 	return "csi-cinder-snapclass", nil
 }
+
+// func patchVolumeSnapshotClasses(dynamicClienSet *dynamic.DynamicClient) (string, error) {
+// 	// Define the GroupVersionResource for VolumeSnapshotClass
+// 	gvr := schema.GroupVersionResource{
+// 		Group:    "snapshot.storage.k8s.io",
+// 		Version:  "v1",
+// 		Resource: "volumesnapshotclasses",
+// 	}
+
+// 	// Read the YAML file
+// 	yamlFile := `
+// apiVersion: snapshot.storage.k8s.io/v1
+// kind: VolumeSnapshotClass
+// metadata:
+//   name: csi-cinder-snapclass
+//   annotations:
+//     snapshot.storage.kubernetes.io/is-default-class: "true"
+// driver: cinder.csi.openstack.org
+// deletionPolicy: Delete
+// parameters:
+//   type: Premium-SSD
+//   force-create: "true"
+// `
+
+// 	// Decode the YAML file
+// 	decoder := yaml.NewYAMLOrJSONDecoder(strings.NewReader(yamlFile), 100)
+// 	obj := &unstructured.Unstructured{}
+// 	if err := decoder.Decode(obj); err != nil {
+// 		fmt.Printf("Error decoding YAML file: %v\n", err)
+// 		return "", err
+// 	}
+
+// 	// Apply the resource to the cluster
+// 	namespace := "" // VolumeSnapshotClass is a cluster-scoped resource
+// 	_, err := dynamicClienSet.Resource(gvr).Namespace(namespace).Patch(context.TODO(), obj.GetName(), metav1.PatchOptions{})
+// 	if err != nil {
+// 		fmt.Printf("Error creating resource: %v\n", err)
+// 		return "", err
+// 	}
+// 	return "csi-cinder-snapclass", nil
+// }
 
 func getVolumeSnapShot(dynamicClienSet *dynamic.DynamicClient,
 	resourceNamespace string) ([]snapshotv1beta1.PvSnapshotItem, error) {

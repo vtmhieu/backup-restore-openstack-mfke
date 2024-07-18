@@ -14,6 +14,32 @@ rules:
 - apiGroups:
   - snapshot.mfke.io
   resources:
+  - createsnapshots
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - snapshot.mfke.io
+  resources:
+  - createsnapshots/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - snapshot.mfke.io
+  resources:
+  - createsnapshots/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - snapshot.mfke.io
+  resources:
   - pvcs
   verbs:
   - create

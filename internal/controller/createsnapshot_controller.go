@@ -192,10 +192,18 @@ func (r *CreateSnapshotReconciler) ReconcileCreateSnapshot(ctx context.Context, 
 	if err != nil {
 		return fmt.Errorf("unable to create dynamic shoot client set %s: %v", clusterName, err)
 	}
-	volumeSnapshotClassName, err := createVolumeSnapshotClasses(dynamicClientSet)
-	if err != nil {
-		return fmt.Errorf("unable to create volumeSnapshotClasses ")
 
+	// check if volumeSnapshotClasses existed
+	volumeSnapshotClassesExisted, err := checkVolumeSnapshotClasses(dynamicClientSet)
+	if err != nil {
+		klog.Infof("Cannot get volumeSnapshotClasses crds in shoot cluster")
+	}
+	// not exist -> creat volume snapshot classes
+	if !volumeSnapshotClassesExisted {
+		_, err = createVolumeSnapshotClasses(dynamicClientSet)
+		if err != nil {
+			klog.Infof("The volumeSnapshotClassName already existed")
+		}
 	}
 
 	// create Snapshot base on input
