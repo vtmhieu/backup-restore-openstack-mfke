@@ -209,7 +209,7 @@ func (r *CreateSnapshotReconciler) ReconcileCreateSnapshot(ctx context.Context, 
 	if createSnapshot.Annotations[CreateSnapshotReconcileAnnotation] == "true" {
 		delete(createSnapshot.Annotations, CreateSnapshotReconcileAnnotation)
 		if err := r.Update(ctx, createSnapshot); err != nil {
-			return fmt.Errorf("error to delete annotation %s in createSnapshot resource: [%v]", createSnapshot, err)
+			return fmt.Errorf("error to delete annotation %s in createSnapshot resource: [%v]", CreateSnapshotReconcileAnnotation, err)
 		}
 	}
 	return nil

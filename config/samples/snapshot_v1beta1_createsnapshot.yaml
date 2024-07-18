@@ -9,5 +9,6 @@ metadata:
     app.kubernetes.io/created-by: backup-restore-openstack-mfke
   name: createsnapshot-sample
 spec:
-  name: test-snapshot
-  pvcName: ""
+  name: hieuvtm-test
+  pvcName: falco-falcosidekick-ui-redis-data-falco-falcosidekick-ui-redis-0
+  namespace: fptcloud-runtime-security

@@ -4,20 +4,20 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.14.0
-  name: restorepvcs.snapshot.mfke.io
+  name: createsnapshots.snapshot.mfke.io
 spec:
   group: snapshot.mfke.io
   names:
-    kind: RestorePvc
-    listKind: RestorePvcList
-    plural: restorepvcs
-    singular: restorepvc
+    kind: CreateSnapshot
+    listKind: CreateSnapshotList
+    plural: createsnapshots
+    singular: createsnapshot
   scope: Namespaced
   versions:
   - name: v1beta1
     schema:
       openAPIV3Schema:
-        description: RestorePvc is the Schema for the restorepvcs API
+        description: CreateSnapshot is the Schema for the createsnapshots API
         properties:
           apiVersion:
             description: |-
@@ -37,27 +37,19 @@ spec:
           metadata:
             type: object
           spec:
-            description: RestorePvcSpec defines the desired state of RestorePvc
+            description: CreateSnapshotSpec defines the desired state of CreateSnapshot
             properties:
-              accessModes:
-                items:
-                  type: string
-                type: array
+              name:
+                type: string
               namespace:
                 type: string
-              restorePvcName:
-                description: Define fields for RestorePVC spec
-                type: string
-              snapshotName:
-                type: string
-              storage:
+              pvcName:
                 type: string
             type: object
           status:
-            description: RestorePvcStatus defines the observed state of RestorePvc
+            description: CreateSnapshotStatus defines the observed state of CreateSnapshot
             properties:
               conditions:
-                description: Define fields for RestorePVC status
                 items:
                   description: "Condition contains details for one aspect of the current
                     state of this API Resource.\n---\nThis struct is intended for
@@ -126,7 +118,7 @@ spec:
                   - type
                   type: object
                 type: array
-              restoredPvcName:
+              success:
                 type: boolean
             type: object
         type: object

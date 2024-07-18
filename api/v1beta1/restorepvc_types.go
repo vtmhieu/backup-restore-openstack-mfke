@@ -17,6 +17,7 @@ limitations under the License.
 package v1beta1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -26,11 +27,11 @@ import (
 // RestorePvcSpec defines the desired state of RestorePvc
 type RestorePvcSpec struct {
 	// Define fields for RestorePVC spec
-	RestorePvcName string   `json:"restorePvcName,omitempty"`
-	SnapshotName   string   `json:"snapshotName,omitempty"`
-	Namespace      string   `json:"namespace,omitempty"`
-	AccessModes    []string `json:"accessModes,omitempty"`
-	Storage        string   `json:"storage,omitempty"`
+	RestorePvcName string                              `json:"restorePvcName,omitempty"`
+	SnapshotName   string                              `json:"snapshotName,omitempty"`
+	Namespace      string                              `json:"namespace,omitempty"`
+	AccessModes    []corev1.PersistentVolumeAccessMode `json:"accessModes,omitempty"`
+	Storage        string                              `json:"storage,omitempty"`
 }
 
 // RestorePvcStatus defines the observed state of RestorePvc

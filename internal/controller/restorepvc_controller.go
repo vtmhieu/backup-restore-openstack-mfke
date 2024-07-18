@@ -100,7 +100,7 @@ func (r *RestorePvcReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			log.Error(err, "Failed to re-fetch restorePvc list")
 			return ctrl.Result{}, err
 		}
-		klog.Infof("Fetch of PVC %v", restorePvc.Status.Conditions)
+		klog.Infof("Fetch of restorePvc %v", restorePvc.Status.Conditions)
 	}
 
 	// define the finalizer for PVC
@@ -112,18 +112,18 @@ func (r *RestorePvcReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 				Message: fmt.Sprintf("Failed to reconcile for the custom resource (%s): (%s)", restorePvc.Name, err)})
 
 			if err := r.Status().Update(ctx, restorePvc); err != nil {
-				log.Error(err, "Failed to update createSnapshot crds status")
+				log.Error(err, "Failed to update restorePvc crds status")
 				return ctrl.Result{}, err
 			}
 			return ctrl.Result{}, err
 		}
-		log.V(1).Info("Reconcile", "PVC list has been successfully updated", req.Namespace)
+		log.V(1).Info("Reconcile", "RestorePvc list has been successfully updated", req.Namespace)
 		meta.SetStatusCondition(&restorePvc.Status.Conditions, metav1.Condition{Type: "Available",
 			Status: metav1.ConditionTrue, Reason: "Reconciling",
-			Message: fmt.Sprintf("PVC List %s in shoot %s is updated", restorePvc.Name, restorePvc.Namespace)})
-		klog.Infof("Status of createSnapshot %v", restorePvc.Status.Conditions)
+			Message: fmt.Sprintf("RestorePvc List %s in shoot %s is updated", restorePvc.Name, restorePvc.Namespace)})
+		klog.Infof("Status of restorePvc %v", restorePvc.Status.Conditions)
 		if err := r.Status().Update(ctx, restorePvc); err != nil {
-			log.Error(err, "Failed to update createSnapshot crds status")
+			log.Error(err, "Failed to update restorePvc crds status")
 			return ctrl.Result{}, err
 		}
 
@@ -134,7 +134,7 @@ func (r *RestorePvcReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			Message: fmt.Sprintf("Performing finalizer operations for the custom resource: %s ", restorePvc.Name)})
 
 		if err := r.Status().Update(ctx, restorePvc); err != nil {
-			log.Error(err, "Failed to update createSnapshot crds status")
+			log.Error(err, "Failed to update restorePvc crds status")
 			return ctrl.Result{}, err
 		}
 		// The object is being deleted
@@ -187,7 +187,7 @@ func (r *RestorePvcReconciler) ReconcileRestorePvc(ctx context.Context, c client
 	err = r.restorePvc(shootClientSet, restorePvc.Spec.RestorePvcName, restorePvc.Spec.Namespace, restorePvc.Spec.SnapshotName, restorePvc.Spec.AccessModes, restorePvc.Spec.Storage)
 	if err != nil {
 		restorePvc.Status.Success = false
-		return fmt.Errorf("unable to restore pvc %s from snapshot in shoot %s: %v", restorePvc.Spec.RestorePvcName, restorePvc.Spec.SnapshotName, clusterName, err)
+		return fmt.Errorf("unable to restore pvc %s from snapshot %s in shoot %s: %v", restorePvc.Spec.RestorePvcName, restorePvc.Spec.SnapshotName, clusterName, err)
 	}
 	restorePvc.Status.Success = true
 	if restorePvc.Annotations[RestorePVCReconcileAnnotation] == "true" {
@@ -199,7 +199,7 @@ func (r *RestorePvcReconciler) ReconcileRestorePvc(ctx context.Context, c client
 	return nil
 }
 
-func (r *RestorePvcReconciler) restorePvc(shootClientSet *kubernetes.Clientset, restorePvcName string, namespace string, snapshotName string, accessModes []string, resourceSize string) error {
+func (r *RestorePvcReconciler) restorePvc(shootClientSet *kubernetes.Clientset, restorePvcName string, namespace string, snapshotName string, accessModes []corev1.PersistentVolumeAccessMode, resourceSize string) error {
 
 	// Define the PersistentVolumeClaim
 	pvc := &corev1.PersistentVolumeClaim{
@@ -213,9 +213,10 @@ func (r *RestorePvcReconciler) restorePvc(shootClientSet *kubernetes.Clientset, 
 				Kind:     "VolumeSnapshot",
 				APIGroup: func() *string { s := "snapshot.storage.k8s.io"; return &s }(),
 			},
-			AccessModes: []corev1.PersistentVolumeAccessMode{
-				//corev1.ReadWriteOnce,
-			},
+			// AccessModes: []corev1.PersistentVolumeAccessMode{
+			// 	corev1.ReadWriteOnce,
+			// },
+			AccessModes: accessModes,
 			Resources: corev1.VolumeResourceRequirements{
 				Requests: corev1.ResourceList{
 					corev1.ResourceStorage: resource.MustParse(resourceSize),
