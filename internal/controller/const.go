@@ -8,8 +8,11 @@ const (
 
 	PvcReconcileAnnotation            = "snapshotv1beta1.mfke.io/pvc-reconcile"
 	PvSnapshotReconcileAnnotation     = "snapshotv1beta1.mfke.io/pvsnapshot-reconcile"
-	RestorePVCReconcileAnnotation     = "snapshotv1beta1.mfke.io/restorePvc-reconcile"
 	CreateSnapshotReconcileAnnotation = "snapshotv1beta1.mfke.io/createSnapshot-reconcile"
+
+	CreateSnapshotEnabledAnnotation = "snapshotv1beta1.mfke.io/createSnapshot-enabled"
+	DeleteSnapshotEnabledAnnotation = "snapshotv1beta1.mfke.io/deleteSnapshot-enabled"
+	RestorePVCEnabledAnnotation     = "snapshotv1beta1.mfke.io/restorePvc-enabled"
 
 	VolumeSnapshotClasses = "volumesnapshotclasses"
 	VolumeSnapshot        = "volumesnapshots"

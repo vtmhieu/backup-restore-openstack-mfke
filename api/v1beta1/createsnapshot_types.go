@@ -25,15 +25,26 @@ import (
 
 // CreateSnapshotSpec defines the desired state of CreateSnapshot
 type CreateSnapshotSpec struct {
+	Create Create `json:"create,omitempty"`
+	Delete Delete `json:"delete,omitempty"`
+}
+
+type Create struct {
 	Name      string `json:"name,omitempty"`
 	PvcName   string `json:"pvcName,omitempty"`
 	Namespace string `json:"namespace,omitempty"`
 }
 
+type Delete struct {
+	Name      string `json:"name,omitempty"`
+	Namespace string `json:"namespace,omitempty"`
+}
+
 // CreateSnapshotStatus defines the observed state of CreateSnapshot
 type CreateSnapshotStatus struct {
-	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
-	Success    bool               `json:"success,omitempty"`
+	Conditions    []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
+	CreateSuccess bool               `json:"createSuccess,omitempty"`
+	DeleteSuccess bool               `json:"deleteSuccess,omitempty"`
 }
 
 //+kubebuilder:object:root=true

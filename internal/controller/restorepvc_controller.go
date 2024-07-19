@@ -19,7 +19,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -105,29 +104,30 @@ func (r *RestorePvcReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	// define the finalizer for PVC
 	if restorePvc.ObjectMeta.DeletionTimestamp.IsZero() {
-		if err := r.ReconcileRestorePvc(ctx, r.Client, restorePvc); err != nil {
-			klog.Info("Reconcile restorePvc Failed")
-			meta.SetStatusCondition(&restorePvc.Status.Conditions, metav1.Condition{Type: "Available",
-				Status: metav1.ConditionFalse, Reason: "Reconciling",
-				Message: fmt.Sprintf("Failed to reconcile for the custom resource (%s): (%s)", restorePvc.Name, err)})
+		if restorePvc.Annotations[RestorePVCEnabledAnnotation] == "true" {
+			if err := r.ReconcileRestorePvc(ctx, r.Client, restorePvc); err != nil {
+				klog.Info("Reconcile restorePvc Failed")
+				meta.SetStatusCondition(&restorePvc.Status.Conditions, metav1.Condition{Type: "Available",
+					Status: metav1.ConditionFalse, Reason: "Reconciling",
+					Message: fmt.Sprintf("Failed to reconcile for the custom resource (%s): (%s)", restorePvc.Name, err)})
 
+				if err := r.Status().Update(ctx, restorePvc); err != nil {
+					log.Error(err, "Failed to update restorePvc crds status")
+					return ctrl.Result{}, err
+				}
+				return ctrl.Result{}, err
+			}
+			log.V(1).Info("Reconcile", "RestorePvc list has been successfully updated", req.Namespace)
+			meta.SetStatusCondition(&restorePvc.Status.Conditions, metav1.Condition{Type: "Available",
+				Status: metav1.ConditionTrue, Reason: "Reconciling",
+				Message: fmt.Sprintf("RestorePvc List %s in shoot %s is updated", restorePvc.Name, restorePvc.Namespace)})
+			klog.Infof("Status of restorePvc %v", restorePvc.Status.Conditions)
 			if err := r.Status().Update(ctx, restorePvc); err != nil {
 				log.Error(err, "Failed to update restorePvc crds status")
 				return ctrl.Result{}, err
 			}
-			return ctrl.Result{}, err
 		}
-		log.V(1).Info("Reconcile", "RestorePvc list has been successfully updated", req.Namespace)
-		meta.SetStatusCondition(&restorePvc.Status.Conditions, metav1.Condition{Type: "Available",
-			Status: metav1.ConditionTrue, Reason: "Reconciling",
-			Message: fmt.Sprintf("RestorePvc List %s in shoot %s is updated", restorePvc.Name, restorePvc.Namespace)})
-		klog.Infof("Status of restorePvc %v", restorePvc.Status.Conditions)
-		if err := r.Status().Update(ctx, restorePvc); err != nil {
-			log.Error(err, "Failed to update restorePvc crds status")
-			return ctrl.Result{}, err
-		}
-
-		return ctrl.Result{RequeueAfter: 20 * time.Minute}, nil
+		return ctrl.Result{}, nil
 	} else {
 		meta.SetStatusCondition(&restorePvc.Status.Conditions, metav1.Condition{Type: "Degraded",
 			Status: metav1.ConditionUnknown, Reason: "Finalizing",
@@ -146,18 +146,18 @@ func (r *RestorePvcReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		}
 		if !ns.ObjectMeta.DeletionTimestamp.IsZero() {
 			// remove our finalizer from the list and update it.
-			controllerutil.RemoveFinalizer(restorePvc, PvcFinalizerName)
+			controllerutil.RemoveFinalizer(restorePvc, RestorePVCFinalizerName)
 			if err := r.Update(ctx, restorePvc); err != nil {
 				return ctrl.Result{}, err
 			}
 		}
-		if controllerutil.ContainsFinalizer(restorePvc, PvcFinalizerName) {
+		if controllerutil.ContainsFinalizer(restorePvc, RestorePVCFinalizerName) {
 			// if err := r.delete(ctx, log, falco); err != nil {
 			// 	return ctrl.Result{}, err
 			// }
 			// log.V(1).Info("Reconcile", "Falco is deleted successfully in shoot", req.Namespace)
 			// remove our finalizer from the list and update it.
-			if ok := controllerutil.RemoveFinalizer(restorePvc, PvcFinalizerName); !ok {
+			if ok := controllerutil.RemoveFinalizer(restorePvc, RestorePVCFinalizerName); !ok {
 				log.Error(err, "Failed to remove finalizer for createSnapshot crds")
 				return ctrl.Result{Requeue: true}, nil
 			}
@@ -190,10 +190,10 @@ func (r *RestorePvcReconciler) ReconcileRestorePvc(ctx context.Context, c client
 		return fmt.Errorf("unable to restore pvc %s from snapshot %s in shoot %s: %v", restorePvc.Spec.RestorePvcName, restorePvc.Spec.SnapshotName, clusterName, err)
 	}
 	restorePvc.Status.Success = true
-	if restorePvc.Annotations[RestorePVCReconcileAnnotation] == "true" {
-		delete(restorePvc.Annotations, RestorePVCReconcileAnnotation)
+	if restorePvc.Annotations[RestorePVCEnabledAnnotation] == "true" {
+		delete(restorePvc.Annotations, RestorePVCEnabledAnnotation)
 		if err := r.Update(ctx, restorePvc); err != nil {
-			return fmt.Errorf("error to delete annotation %s in restorePvc resource: [%v]", RestorePVCReconcileAnnotation, err)
+			return fmt.Errorf("error to delete annotation %s in restorePvc resource: [%v]", RestorePVCEnabledAnnotation, err)
 		}
 	}
 	return nil

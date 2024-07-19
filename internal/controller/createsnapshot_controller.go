@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -108,29 +107,54 @@ func (r *CreateSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	// define the finalizer for PVC
 	if createSnapshot.ObjectMeta.DeletionTimestamp.IsZero() {
-		if err := r.ReconcileCreateSnapshot(ctx, r.Client, createSnapshot); err != nil {
-			klog.Info("Reconcile createSnapshot Failed")
-			meta.SetStatusCondition(&createSnapshot.Status.Conditions, metav1.Condition{Type: "Available",
-				Status: metav1.ConditionFalse, Reason: "Reconciling",
-				Message: fmt.Sprintf("Failed to reconcile for the custom resource (%s): (%s)", createSnapshot.Name, err)})
+		if createSnapshot.Annotations[CreateSnapshotEnabledAnnotation] == "true" {
+			if err := r.ReconcileCreateSnapshot(ctx, r.Client, createSnapshot); err != nil {
+				klog.Info("Reconcile createSnapshot Failed")
+				meta.SetStatusCondition(&createSnapshot.Status.Conditions, metav1.Condition{Type: "Available",
+					Status: metav1.ConditionFalse, Reason: "Reconciling",
+					Message: fmt.Sprintf("Failed to reconcile for the custom resource (%s): (%s)", createSnapshot.Name, err)})
 
+				if err := r.Status().Update(ctx, createSnapshot); err != nil {
+					log.Error(err, "Failed to update createSnapshot crds status")
+					return ctrl.Result{}, err
+				}
+				return ctrl.Result{}, err
+			}
+			log.V(1).Info("Reconcile", "Snapshot has been successfully created", req.Namespace)
+			meta.SetStatusCondition(&createSnapshot.Status.Conditions, metav1.Condition{Type: "Available",
+				Status: metav1.ConditionTrue, Reason: "Reconciling",
+				Message: fmt.Sprintf("Snapshot %s in shoot %s is created", createSnapshot.Spec.Create.Name, createSnapshot.Namespace)})
+			klog.Infof("Status of createSnapshot %v", createSnapshot.Status.Conditions)
 			if err := r.Status().Update(ctx, createSnapshot); err != nil {
 				log.Error(err, "Failed to update createSnapshot crds status")
 				return ctrl.Result{}, err
 			}
-			return ctrl.Result{}, err
 		}
-		log.V(1).Info("Reconcile", "PVC list has been successfully updated", req.Namespace)
-		meta.SetStatusCondition(&createSnapshot.Status.Conditions, metav1.Condition{Type: "Available",
-			Status: metav1.ConditionTrue, Reason: "Reconciling",
-			Message: fmt.Sprintf("PVC List %s in shoot %s is updated", createSnapshot.Name, createSnapshot.Namespace)})
-		klog.Infof("Status of createSnapshot %v", createSnapshot.Status.Conditions)
-		if err := r.Status().Update(ctx, createSnapshot); err != nil {
-			log.Error(err, "Failed to update createSnapshot crds status")
-			return ctrl.Result{}, err
+		if createSnapshot.Annotations[DeleteSnapshotEnabledAnnotation] == "true" {
+			if err := r.ReconcileDeleteSnapshot(ctx, r.Client, createSnapshot); err != nil {
+				klog.Info("Reconcile createSnapshot Failed")
+				meta.SetStatusCondition(&createSnapshot.Status.Conditions, metav1.Condition{Type: "Available",
+					Status: metav1.ConditionFalse, Reason: "Deleting",
+					Message: fmt.Sprintf("Failed to reconcile for the custom resource (%s): (%s)", createSnapshot.Name, err)})
+
+				if err := r.Status().Update(ctx, createSnapshot); err != nil {
+					log.Error(err, "Failed to update createSnapshot crds status")
+					return ctrl.Result{}, err
+				}
+				return ctrl.Result{}, err
+			}
+			log.V(1).Info("Reconcile", "Snapshot has been successfully deleted", req.Namespace)
+			meta.SetStatusCondition(&createSnapshot.Status.Conditions, metav1.Condition{Type: "Available",
+				Status: metav1.ConditionTrue, Reason: "Reconciling",
+				Message: fmt.Sprintf("Snapshot %s in shoot %s is Deleted", createSnapshot.Spec.Create.Name, createSnapshot.Namespace)})
+			klog.Infof("Status of createSnapshot %v", createSnapshot.Status.Conditions)
+			if err := r.Status().Update(ctx, createSnapshot); err != nil {
+				log.Error(err, "Failed to update createSnapshot crds status")
+				return ctrl.Result{}, err
+			}
 		}
 
-		return ctrl.Result{RequeueAfter: 20 * time.Minute}, nil
+		return ctrl.Result{}, nil
 	} else {
 		meta.SetStatusCondition(&createSnapshot.Status.Conditions, metav1.Condition{Type: "Degraded",
 			Status: metav1.ConditionUnknown, Reason: "Finalizing",
@@ -207,17 +231,17 @@ func (r *CreateSnapshotReconciler) ReconcileCreateSnapshot(ctx context.Context, 
 	}
 
 	// create Snapshot base on input
-	err = r.createSnapshot(dynamicClientSet, createSnapshot.Spec.Name, volumeSnapshotClassName, createSnapshot.Spec.PvcName, createSnapshot.Spec.Namespace)
+	err = r.createSnapshot(dynamicClientSet, createSnapshot.Spec.Create.Name, volumeSnapshotClassName, createSnapshot.Spec.Create.PvcName, createSnapshot.Spec.Create.Namespace)
 	if err != nil {
-		createSnapshot.Status.Success = false
-		return fmt.Errorf("unable to create snap shot %s for persistentVolumeName %s in namespace %s", createSnapshot.Spec.Name, createSnapshot.Spec.PvcName, createSnapshot.Spec.Namespace)
+		createSnapshot.Status.CreateSuccess = false
+		return fmt.Errorf("unable to create snap shot %s for persistentVolumeName %s in namespace %s", createSnapshot.Spec.Create.Name, createSnapshot.Spec.Create.PvcName, createSnapshot.Spec.Create.Namespace)
 	}
 
-	createSnapshot.Status.Success = true
-	if createSnapshot.Annotations[CreateSnapshotReconcileAnnotation] == "true" {
-		delete(createSnapshot.Annotations, CreateSnapshotReconcileAnnotation)
+	createSnapshot.Status.CreateSuccess = true
+	if createSnapshot.Annotations[CreateSnapshotEnabledAnnotation] == "true" {
+		delete(createSnapshot.Annotations, CreateSnapshotEnabledAnnotation)
 		if err := r.Update(ctx, createSnapshot); err != nil {
-			return fmt.Errorf("error to delete annotation %s in createSnapshot resource: [%v]", CreateSnapshotReconcileAnnotation, err)
+			return fmt.Errorf("error to delete annotation %s in createSnapshot resource: [%v]", CreateSnapshotEnabledAnnotation, err)
 		}
 	}
 	return nil
@@ -256,6 +280,58 @@ spec:
 	if err != nil {
 		fmt.Printf("Error creating resource: %v\n", err)
 		return err
+	}
+	return nil
+}
+
+func (r *CreateSnapshotReconciler) deleteSnapshot(dynamicClientSet *dynamic.DynamicClient, snapshotName string, namespace string) error {
+	// Define the GroupVersionResource for VolumeSnapshotClass
+	gvr := schema.GroupVersionResource{
+		Group:    "snapshot.storage.k8s.io",
+		Version:  "v1",
+		Resource: VolumeSnapshot,
+	}
+	// Apply the resource to the cluster
+	err := dynamicClientSet.Resource(gvr).Namespace(namespace).Delete(context.TODO(), snapshotName, metav1.DeleteOptions{})
+	if err != nil {
+		fmt.Printf("Error deleting snapshot: %v\n", err)
+		return err
+	}
+	return nil
+}
+
+func (r *CreateSnapshotReconciler) ReconcileDeleteSnapshot(ctx context.Context, c client.Client, createSnapshot *snapshotv1beta1.CreateSnapshot) error {
+	// get namespace in seed
+	namespace := createSnapshot.Namespace
+	clusterName := namespace[4:]
+	// get kubeconfig
+	shootKubeconfigDataString, err := GetSecretShootKubeconfig(ctx, c, namespace)
+	if err != nil {
+		return fmt.Errorf("unable to get shoot secret data kubeconfig in ns %s: %v", clusterName, err)
+	}
+	// // create shoot client set from this kubeconfig data
+	// shootClientSet, err := CreateShootKubeClient(ctx, shootKubeconfigDataString, clusterName)
+	// if err != nil {
+	// 	return fmt.Errorf("unable to create shoot client set %s: %v", clusterName, err)
+	// }
+	// create dynamic client from this kubeconfig data -> send request for crds
+	dynamicClientSet, err := CreateDynamicKubeClient(ctx, shootKubeconfigDataString)
+	if err != nil {
+		return fmt.Errorf("unable to create dynamic shoot client set %s: %v", clusterName, err)
+	}
+	// delete Snapshot base on input
+	err = r.deleteSnapshot(dynamicClientSet, createSnapshot.Spec.Delete.Name, createSnapshot.Spec.Delete.Namespace)
+	if err != nil {
+		createSnapshot.Status.CreateSuccess = false
+		return fmt.Errorf("unable to delete snapshot %s  in namespace %s", createSnapshot.Spec.Delete.Name, createSnapshot.Spec.Delete.Namespace)
+	}
+
+	createSnapshot.Status.DeleteSuccess = true
+	if createSnapshot.Annotations[DeleteSnapshotEnabledAnnotation] == "true" {
+		delete(createSnapshot.Annotations, DeleteSnapshotEnabledAnnotation)
+		if err := r.Update(ctx, createSnapshot); err != nil {
+			return fmt.Errorf("error to delete annotation %s in createSnapshot resource: [%v]", DeleteSnapshotEnabledAnnotation, err)
+		}
 	}
 	return nil
 }

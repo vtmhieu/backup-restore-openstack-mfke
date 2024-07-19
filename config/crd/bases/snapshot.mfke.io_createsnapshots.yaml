@@ -39,12 +39,22 @@ spec:
           spec:
             description: CreateSnapshotSpec defines the desired state of CreateSnapshot
             properties:
-              name:
-                type: string
-              namespace:
-                type: string
-              pvcName:
-                type: string
+              create:
+                properties:
+                  name:
+                    type: string
+                  namespace:
+                    type: string
+                  pvcName:
+                    type: string
+                type: object
+              delete:
+                properties:
+                  name:
+                    type: string
+                  namespace:
+                    type: string
+                type: object
             type: object
           status:
             description: CreateSnapshotStatus defines the observed state of CreateSnapshot
@@ -118,7 +128,9 @@ spec:
                   - type
                   type: object
                 type: array
-              success:
+              createSuccess:
+                type: boolean
+              deleteSuccess:
                 type: boolean
             type: object
         type: object
