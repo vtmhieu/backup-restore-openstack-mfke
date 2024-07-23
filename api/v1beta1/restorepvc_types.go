@@ -27,11 +27,11 @@ import (
 // RestorePvcSpec defines the desired state of RestorePvc
 type RestorePvcSpec struct {
 	// Define fields for RestorePVC spec
-	RestorePvcName string                              `json:"restorePvcName,omitempty"`
-	SnapshotName   string                              `json:"snapshotName,omitempty"`
-	Namespace      string                              `json:"namespace,omitempty"`
-	AccessModes    []corev1.PersistentVolumeAccessMode `json:"accessModes,omitempty"`
-	Storage        string                              `json:"storage,omitempty"`
+	SourcePvcName string                              `json:"sourcePvcName,omitempty"`
+	SnapshotName  string                              `json:"snapshotName,omitempty"`
+	Namespace     string                              `json:"namespace,omitempty"`
+	AccessModes   []corev1.PersistentVolumeAccessMode `json:"accessModes,omitempty"`
+	Storage       string                              `json:"storage,omitempty"`
 }
 
 // RestorePvcStatus defines the observed state of RestorePvc

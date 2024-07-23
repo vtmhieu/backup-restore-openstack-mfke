@@ -40,13 +40,13 @@ var _ = Describe("CreateSnapshot Controller", func() {
 			Name:      resourceName,
 			Namespace: "default", // TODO(user):Modify as needed
 		}
-		createsnapshot := &snapshotv1beta1.CreateSnapshot{}
+		snapshot := &snapshotv1beta1.Snapshot{}
 
 		BeforeEach(func() {
 			By("creating the custom resource for the Kind CreateSnapshot")
-			err := k8sClient.Get(ctx, typeNamespacedName, createsnapshot)
+			err := k8sClient.Get(ctx, typeNamespacedName, snapshot)
 			if err != nil && errors.IsNotFound(err) {
-				resource := &snapshotv1beta1.CreateSnapshot{
+				resource := &snapshotv1beta1.Snapshot{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      resourceName,
 						Namespace: "default",
@@ -59,7 +59,7 @@ var _ = Describe("CreateSnapshot Controller", func() {
 
 		AfterEach(func() {
 			// TODO(user): Cleanup logic after each test, like removing the resource instance.
-			resource := &snapshotv1beta1.CreateSnapshot{}
+			resource := &snapshotv1beta1.Snapshot{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
 

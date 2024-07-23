@@ -111,6 +111,7 @@ func (r *RestorePvcReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 					Status: metav1.ConditionFalse, Reason: "Reconciling",
 					Message: fmt.Sprintf("Failed to reconcile for the custom resource (%s): (%s)", restorePvc.Name, err)})
 
+				restorePvc.Status.Success = false
 				if err := r.Status().Update(ctx, restorePvc); err != nil {
 					log.Error(err, "Failed to update restorePvc crds status")
 					return ctrl.Result{}, err
@@ -121,6 +122,8 @@ func (r *RestorePvcReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			meta.SetStatusCondition(&restorePvc.Status.Conditions, metav1.Condition{Type: "Available",
 				Status: metav1.ConditionTrue, Reason: "Reconciling",
 				Message: fmt.Sprintf("RestorePvc List %s in shoot %s is updated", restorePvc.Name, restorePvc.Namespace)})
+
+			restorePvc.Status.Success = true
 			klog.Infof("Status of restorePvc %v", restorePvc.Status.Conditions)
 			if err := r.Status().Update(ctx, restorePvc); err != nil {
 				log.Error(err, "Failed to update restorePvc crds status")
@@ -184,10 +187,13 @@ func (r *RestorePvcReconciler) ReconcileRestorePvc(ctx context.Context, c client
 	if err != nil {
 		return fmt.Errorf("unable to create shoot client set %s: %v", clusterName, err)
 	}
-	err = r.restorePvc(shootClientSet, restorePvc.Spec.RestorePvcName, restorePvc.Spec.Namespace, restorePvc.Spec.SnapshotName, restorePvc.Spec.AccessModes, restorePvc.Spec.Storage)
+	// define the name for restore pvc
+	restorePvcName := restorePvc.Spec.SourcePvcName + "-restore-snapshot"
+	// restore PVC
+	err = r.restorePvc(shootClientSet, restorePvcName, restorePvc.Spec.Namespace, restorePvc.Spec.SnapshotName, restorePvc.Spec.AccessModes, restorePvc.Spec.Storage)
 	if err != nil {
 		restorePvc.Status.Success = false
-		return fmt.Errorf("unable to restore pvc %s from snapshot %s in shoot %s: %v", restorePvc.Spec.RestorePvcName, restorePvc.Spec.SnapshotName, clusterName, err)
+		return fmt.Errorf("unable to restore pvc %s from snapshot %s in shoot %s: %v", restorePvc.Spec.SourcePvcName, restorePvc.Spec.SnapshotName, clusterName, err)
 	}
 	restorePvc.Status.Success = true
 	if restorePvc.Annotations[RestorePVCEnabledAnnotation] == "true" {

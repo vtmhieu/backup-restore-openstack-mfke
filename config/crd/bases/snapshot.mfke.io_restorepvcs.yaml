@@ -45,10 +45,10 @@ spec:
                 type: array
               namespace:
                 type: string
-              restorePvcName:
-                description: Define fields for RestorePVC spec
-                type: string
               snapshotName:
+                type: string
+              sourcePvcName:
+                description: Define fields for RestorePVC spec
                 type: string
               storage:
                 type: string

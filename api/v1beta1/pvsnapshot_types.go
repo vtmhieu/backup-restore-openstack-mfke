@@ -36,18 +36,19 @@ type PvSnapshotStatus struct {
 }
 
 type PvSnapshotItem struct {
-	SnapshotName                   string `json:"snapshotName,omitempty"`
-	Namespace                      string `json:"namespace,omitempty"`
-	PersistenVolumeClaimName       string `json:"persistentVolumeClaimName,omitempty"`
-	VolumeSnapshotClassName        string `json:"volumeSnapshotClassName,omitempty"`
-	BoundVolumeSnapshotContentName string `json:"boundVolumeSnapshotContentName,omitempty"`
-	CreationTime                   string `json:"creationTime,omitempty"`
-	ReadyToUse                     bool   `json:"readyToUse,omitempty"`
-	RestoreSize                    string `json:"restoreSize,omitempty"`
+	SnapshotName            string `json:"snapshotName,omitempty"`
+	Namespace               string `json:"namespace,omitempty"`
+	SourcePvcName           string `json:"sourcePvcName,omitempty"`
+	VolumeSnapshotClassName string `json:"volumeSnapshotClassName,omitempty"`
+	SnapshotContentName     string `json:"snapshotContentName,omitempty"`
+	CreationTime            string `json:"creationTime,omitempty"`
+	ReadyToUse              bool   `json:"readyToUse,omitempty"`
+	RestoreSize             string `json:"restoreSize,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`,description="CreationTimestamp is a timestamp representing the server time when this object was created"
 
 // PvSnapshot is the Schema for the pvsnapshots API
 type PvSnapshot struct {

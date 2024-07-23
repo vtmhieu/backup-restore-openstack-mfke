@@ -6,19 +6,28 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 
+	"github.com/robfig/cron"
 	snapshotv1beta1 "github.com/vtmhieu/backup-restore-openstack-mfke.git/api/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+)
+
+const (
+	sevenDays         = 7 * 24 * time.Hour
+	nextScheduleDelta = 100 * time.Millisecond
 )
 
 // Get Secret user-kubeconfig in ns seed
@@ -300,7 +309,7 @@ func getVolumeSnapShot(dynamicClienSet *dynamic.DynamicClient,
 				fmt.Println("Error accessing spec source:", err)
 				continue
 			}
-			pvSnapshot.PersistenVolumeClaimName = pvcName
+			pvSnapshot.SourcePvcName = pvcName
 		}
 		// get volumeSnapshotClassName
 		volumeSnapshotClassName, found, err := unstructured.NestedString(spec, "volumeSnapshotClassName")
@@ -321,9 +330,9 @@ func getVolumeSnapShot(dynamicClienSet *dynamic.DynamicClient,
 		snapshotContent, found, err := unstructured.NestedString(status, "boundVolumeSnapshotContentName")
 		if err != nil || !found {
 			fmt.Println("Error accessing status snapshotContent:", err)
-			pvSnapshot.BoundVolumeSnapshotContentName = Unknown
+			pvSnapshot.SnapshotContentName = Unknown
 		} else {
-			pvSnapshot.BoundVolumeSnapshotContentName = snapshotContent
+			pvSnapshot.SnapshotContentName = snapshotContent
 		}
 		// get creation time
 		creationTimestamp, found, err := unstructured.NestedString(status, "creationTime")
@@ -364,3 +373,59 @@ func getVolumeSnapShot(dynamicClienSet *dynamic.DynamicClient,
 
 // 	return pvSnapshotCrdName, nil
 // }
+
+// ValidateHibernationCronSpec validates a cron specification of a hibernation schedule.
+func ValidateSchedulerCronSpec(seenSpecs sets.String, spec string, fldPath *field.Path) field.ErrorList {
+	allErrs := field.ErrorList{}
+
+	_, err := cron.ParseStandard(spec)
+	switch {
+	case err != nil:
+		allErrs = append(allErrs, field.Invalid(fldPath, spec, fmt.Sprintf("not a valid cron spec: %v", err)))
+	case seenSpecs.Has(spec):
+		allErrs = append(allErrs, field.Duplicate(fldPath, spec))
+	default:
+		seenSpecs.Insert(spec)
+	}
+
+	return allErrs
+}
+
+// ValidateHibernationCronSpec validates a cron specification of a hibernation schedule.
+func ValidateCronSpec(spec string) (cron.Schedule, error) {
+	parseCron, err := cron.ParseStandard(spec)
+	if err != nil {
+		return parseCron, err
+	}
+	return parseCron, nil
+}
+
+// ValidateHibernationScheduleLocation validates that the location of a HibernationSchedule is correct.
+func ValidateScheduleLocation(location string) (*time.Location, error) {
+	parseLocation, err := time.LoadLocation(location)
+	if err != nil {
+		return parseLocation, err
+	}
+	return parseLocation, nil
+}
+
+// next returns the time in UTC from the schedule, that is immediately after the input time 't'.
+// The input 't' is converted in the schedule's location before any calculations are done.
+func next(schedule cron.Schedule, location time.Location, t time.Time) time.Time {
+	return schedule.Next(t.In(&location)).UTC()
+}
+
+// previous returns the time in UTC from the schedule that is immediately before 'to' and after 'from'.
+// Nil is returned if no such time can be found.
+// The input times - 'to' and 'from' are converted in the schedule's location before any calculation is done.
+func previous(schedule cron.Schedule, location time.Location, from, to time.Time) *time.Time {
+	// To get the time that is immediately before `to`, iterate over every activation time in the cron schedule
+	// that is after "from" until the one that is immediately after `to` is reached.
+	var previousActivationTime *time.Time
+	for t := schedule.Next(from.In(&location)); !t.UTC().After(to.UTC()); t = schedule.Next(t) {
+		inUTC := t.UTC()
+		previousActivationTime = &inUTC
+	}
+
+	return previousActivationTime
+}
