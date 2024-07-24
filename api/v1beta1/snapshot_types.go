@@ -17,6 +17,8 @@ limitations under the License.
 package v1beta1
 
 import (
+	"time"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -57,10 +59,10 @@ type Scheduler struct {
 type SnapshotStatus struct {
 	Conditions            []metav1.Condition  `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
 	SnapshotSchedulerList []SnapshotScheduler `json:"snapshotSchedulerList,omitempty"`
+	RequeueAfter          time.Duration       `json:"requeueAfter,omitempty"`
 
-	CreateSuccess    bool         `json:"createSuccess,omitempty"`
-	DeleteSuccess    bool         `json:"deleteSuccess,omitempty"`
-	LastSnapshotTime *metav1.Time `json:"lastSnapshotTime,omitempty"`
+	CreateSuccess bool `json:"createSuccess,omitempty"`
+	DeleteSuccess bool `json:"deleteSuccess,omitempty"`
 }
 
 //+kubebuilder:object:root=true

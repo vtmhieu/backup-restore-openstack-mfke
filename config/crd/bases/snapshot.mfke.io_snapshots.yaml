@@ -64,15 +64,13 @@ spec:
                       type: string
                     pvcName:
                       type: string
-                    schedules:
-                      items:
-                        properties:
-                          location:
-                            type: string
-                          start:
-                            type: string
-                        type: object
-                      type: array
+                    schedule:
+                      properties:
+                        location:
+                          type: string
+                        start:
+                          type: string
+                      type: object
                   type: object
                 type: array
             type: object
@@ -152,6 +150,13 @@ spec:
                 type: boolean
               deleteSuccess:
                 type: boolean
+              requeueAfter:
+                description: |-
+                  A Duration represents the elapsed time between two instants
+                  as an int64 nanosecond count. The representation limits the
+                  largest representable duration to approximately 290 years.
+                format: int64
+                type: integer
               snapshotSchedulerList:
                 items:
                   properties:
@@ -161,15 +166,13 @@ spec:
                       type: string
                     pvcName:
                       type: string
-                    schedules:
-                      items:
-                        properties:
-                          location:
-                            type: string
-                          start:
-                            type: string
-                        type: object
-                      type: array
+                    schedule:
+                      properties:
+                        location:
+                          type: string
+                        start:
+                          type: string
+                      type: object
                   type: object
                 type: array
             type: object

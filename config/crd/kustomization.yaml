@@ -5,7 +5,7 @@ resources:
 - bases/snapshot.mfke.io_pvsnapshots.yaml
 - bases/snapshot.mfke.io_pvcs.yaml
 - bases/snapshot.mfke.io_restorepvcs.yaml
-- bases/snapshot.mfke.io_createsnapshots.yaml
+- bases/snapshot.mfke.io_snapshots.yaml
 #+kubebuilder:scaffold:crdkustomizeresource
 
 patches:

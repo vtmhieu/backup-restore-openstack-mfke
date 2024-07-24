@@ -9,6 +9,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/klog"
 
 	"github.com/robfig/cron"
 	snapshotv1beta1 "github.com/vtmhieu/backup-restore-openstack-mfke.git/api/v1beta1"
@@ -411,8 +412,8 @@ func ValidateScheduleLocation(location string) (*time.Location, error) {
 
 // next returns the time in UTC from the schedule, that is immediately after the input time 't'.
 // The input 't' is converted in the schedule's location before any calculations are done.
-func next(schedule cron.Schedule, location time.Location, t time.Time) time.Time {
-	return schedule.Next(t.In(&location)).UTC()
+func next(schedule cron.Schedule, location *time.Location, t time.Time) time.Time {
+	return schedule.Next(t.In(location)).UTC()
 }
 
 // previous returns the time in UTC from the schedule that is immediately before 'to' and after 'from'.
@@ -428,4 +429,85 @@ func previous(schedule cron.Schedule, location time.Location, from, to time.Time
 	}
 
 	return previousActivationTime
+}
+
+func nextSnapshotDuration(schedule cron.Schedule, location *time.Location, now time.Time) time.Duration {
+	timeStamp := next(schedule, location, now)
+	return timeStamp.Add(nextScheduleDelta).Sub(now)
+}
+
+func convertTimeNow2String(now time.Time) string {
+	// Load the location for Asia/Bangkok
+	location, err := time.LoadLocation("Asia/Bangkok")
+	if err != nil {
+		fmt.Println("Error loading location:", err)
+		return ""
+	}
+
+	// Convert the current time to the Asia/Bangkok timezone
+	nowInBangkok := now.In(location)
+
+	// Format the time to the desired format YY-MM-DD-hh-mm
+	converted := nowInBangkok.Format("06-01-02-15-04") // "06" for YY, "01" for MM, "02" for DD, "15" for hh, "04" for mm
+
+	return converted
+}
+
+func createSnapshot(dynamicClientSet *dynamic.DynamicClient, snapshotName string, volumeSnapshotClassName string, pvcName string, namespace string) error {
+	// Define the GroupVersionResource for VolumeSnapshotClass
+	gvr := schema.GroupVersionResource{
+		Group:    "snapshot.storage.k8s.io",
+		Version:  "v1",
+		Resource: VolumeSnapshot,
+	}
+
+	currentTimeString := convertTimeNow2String(time.Now())
+
+	// Create YAML content with user input
+	yamlContent := fmt.Sprintf(`
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshot
+metadata:
+  name: %s
+spec:
+  volumeSnapshotClassName: %s
+  source:
+    persistentVolumeClaimName: %s
+`, pvcName+currentTimeString, volumeSnapshotClassName, pvcName)
+
+	// Decode the YAML content
+	decoder := yaml.NewYAMLOrJSONDecoder(strings.NewReader(yamlContent), 100)
+	obj := &unstructured.Unstructured{}
+	if err := decoder.Decode(obj); err != nil {
+		fmt.Printf("Error decoding YAML content: %v\n", err)
+		return err
+	}
+
+	// Apply the resource to the cluster
+	_, err := dynamicClientSet.Resource(gvr).Namespace(namespace).Create(context.TODO(), obj, metav1.CreateOptions{})
+	if err != nil {
+		fmt.Printf("Error creating resource: %v\n", err)
+		return err
+	}
+	return nil
+}
+
+func createSnapshotScheduler(dynamicClientSet *dynamic.DynamicClient, name string, pvcName string, namespace string) error {
+	// check if volumeSnapshotClasses existed
+	volumeSnapshotClassesExisted, err := checkVolumeSnapshotClasses(dynamicClientSet)
+	if err != nil {
+		klog.Infof("Cannot get volumeSnapshotClasses crds in shoot cluster")
+	}
+	// not exist -> creat volume snapshot classes
+	if !volumeSnapshotClassesExisted {
+		_, err = createVolumeSnapshotClasses(dynamicClientSet)
+		if err != nil {
+			klog.Infof("The volumeSnapshotClassName already existed")
+		}
+	}
+
+	// create Snapshot base on input
+	err = createSnapshot(dynamicClientSet, name, volumeSnapshotClassName, pvcName, namespace)
+
+	return err
 }
