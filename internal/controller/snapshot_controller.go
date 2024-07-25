@@ -162,15 +162,14 @@ func (r *CreateSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		}
 
 		// Reconcile snapshot Schedule
-		SnapshotSchedulerList, requeueAfter, err := r.ReconcileScheduleSnapshot(ctx, r.Client, snapshot)
+		SnapshotSchedulerListReturn, requeueAfter, err := r.ReconcileScheduleSnapshot(ctx, r.Client, snapshot)
 		if err != nil {
 			klog.Info("Reconcile snapshot Failed")
 			//update status
 			meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{Type: "Available",
 				Status: metav1.ConditionFalse, Reason: "Reconciling",
 				Message: fmt.Sprintf("Failed to reconcile for the custom resource (%s): (%s)", snapshot.Name, err)})
-
-			snapshot.Status.SnapshotSchedulerList = SnapshotSchedulerList
+			snapshot.Status.SnapshotSchedulerList = SnapshotSchedulerListReturn
 			snapshot.Status.RequeueAfter = requeueAfter
 			if err := r.Status().Update(ctx, snapshot); err != nil {
 				log.Error(err, "Failed to update snapshot crds status")
@@ -178,7 +177,16 @@ func (r *CreateSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			}
 			return ctrl.Result{RequeueAfter: requeueAfter}, err
 		}
-		return ctrl.Result{RequeueAfter: requeueAfter}, nil
+		meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{Type: "Available",
+			Status: metav1.ConditionTrue, Reason: "Reconciling",
+			Message: fmt.Sprintf("Snapshot schedule %s in shoot %s is reconciled", snapshot.Name, snapshot.Namespace)})
+		snapshot.Status.SnapshotSchedulerList = SnapshotSchedulerListReturn
+		//snapshot.Status.RequeueAfter = requeueAfter
+		if err := r.Status().Update(ctx, snapshot); err != nil {
+			log.Error(err, "Failed to update snapshot crds status")
+			return ctrl.Result{RequeueAfter: requeueAfter}, err
+		}
+		return ctrl.Result{RequeueAfter: requeueAfter}, err
 	} else {
 		meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{Type: "Degraded",
 			Status: metav1.ConditionUnknown, Reason: "Finalizing",
@@ -264,13 +272,12 @@ func (r *CreateSnapshotReconciler) ReconcileScheduleSnapshot(ctx context.Context
 	if len(scheduleSnapshot.Spec.SnapshotSchedulerList) != 0 {
 		for _, item := range scheduleSnapshot.Spec.SnapshotSchedulerList {
 			// -> check pvc exist?
-			pvc_existed := false
+			pvcExisted := false
 			for _, pvc := range pvcList.PVCList {
-				if item.PvcName != pvc.PvcName {
-					continue
+				if (item.PvcName == pvc.PvcName) && (item.Namespace == pvc.Namespace) {
+					pvcExisted = true
+					break
 				}
-				pvc_existed = true
-				break
 			}
 			// -> check validation of schedule
 			validated := false
@@ -286,19 +293,26 @@ func (r *CreateSnapshotReconciler) ReconcileScheduleSnapshot(ctx context.Context
 				validated = false
 			}
 			validated = true
-			if pvc_existed && validated {
+			requeuAfter := nextSnapshotDuration(parseCron, parseLocation, now)
+			klog.Infof("Time to the next snapshot is: %s", requeuAfter)
+
+			if pvcExisted && validated {
 				snapshotSchedulerList2Update = append(snapshotSchedulerList2Update, item)
 				// -> check duration time to request
 				requeuAfter := nextSnapshotDuration(parseCron, parseLocation, now)
 				// -> if it is time -> run request
-				if requeuAfter < 30*time.Second && requeuAfter > 0 {
+				// check condition of the time.Now() in compare to the previous snapshot time
+				previousTime := previousSnapshotDuration(parseCron, parseLocation, now)
+				klog.Infof("Time to the last snapshot is: %s", previousTime)
+
+				if previousTime < time.Second && requeuAfter > 0 {
 					// run snapshot
 					err := createSnapshotScheduler(dynamicClientSet, item.Name, item.PvcName, item.Namespace)
 					if err != nil {
 						klog.Errorf("unable to create snap shot %s for persistentVolumeName %s in namespace %s", item.Name, item.PvcName, item.Namespace)
 					}
 					// append the next snapshot time
-					requeuAfterList = append(requeuAfterList, 10*time.Minute)
+					requeuAfterList = append(requeuAfterList, requeuAfter)
 				} else {
 					requeuAfterList = append(requeuAfterList, requeuAfter)
 				}
@@ -314,6 +328,14 @@ func (r *CreateSnapshotReconciler) ReconcileScheduleSnapshot(ctx context.Context
 		requeueAfter = requeuAfterList[0]
 	}
 	// -> requeue
+	klog.Infof("the reconcile will requeue after: %s", requeueAfter)
+
+	if scheduleSnapshot.Annotations[SnapshotReconcileAnnotation] == "true" {
+		delete(scheduleSnapshot.Annotations, SnapshotReconcileAnnotation)
+		if err := r.Update(ctx, scheduleSnapshot); err != nil {
+			return snapshotSchedulerList2Update, requeueAfter, fmt.Errorf("error to delete annotation %s in createSnapshot resource: [%v]", DeleteSnapshotEnabledAnnotation, err)
+		}
+	}
 	return snapshotSchedulerList2Update, requeueAfter, nil
 }
 

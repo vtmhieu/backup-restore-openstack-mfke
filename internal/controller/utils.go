@@ -419,16 +419,23 @@ func next(schedule cron.Schedule, location *time.Location, t time.Time) time.Tim
 // previous returns the time in UTC from the schedule that is immediately before 'to' and after 'from'.
 // Nil is returned if no such time can be found.
 // The input times - 'to' and 'from' are converted in the schedule's location before any calculation is done.
-func previous(schedule cron.Schedule, location time.Location, from, to time.Time) *time.Time {
-	// To get the time that is immediately before `to`, iterate over every activation time in the cron schedule
-	// that is after "from" until the one that is immediately after `to` is reached.
-	var previousActivationTime *time.Time
-	for t := schedule.Next(from.In(&location)); !t.UTC().After(to.UTC()); t = schedule.Next(t) {
-		inUTC := t.UTC()
-		previousActivationTime = &inUTC
+func previous(schedule cron.Schedule, location *time.Location, t time.Time) time.Time {
+	tInLocation := t.In(location)
+	var previousTime time.Time
+
+	// Iterate over the schedule to find the previous time
+	for snapshotTime := schedule.Next(tInLocation.Add(-time.Hour * 24 * 365)); !snapshotTime.After(tInLocation); snapshotTime = schedule.Next(snapshotTime) {
+		previousTime = snapshotTime
 	}
 
-	return previousActivationTime
+	return previousTime.UTC()
+}
+
+func previousSnapshotDuration(schedule cron.Schedule, location *time.Location, now time.Time) time.Duration {
+
+	previousTime := previous(schedule, location, now)
+
+	return now.Sub(previousTime)
 }
 
 func nextSnapshotDuration(schedule cron.Schedule, location *time.Location, now time.Time) time.Duration {
