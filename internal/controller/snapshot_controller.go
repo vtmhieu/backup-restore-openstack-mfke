@@ -281,43 +281,48 @@ func (r *CreateSnapshotReconciler) ReconcileScheduleSnapshot(ctx context.Context
 			}
 			// -> check validation of schedule
 			validated := false
-			// check validate and convert to cron.Schedule type
-			parseCron, err := ValidateCronSpec(item.Schedules.Start)
-			if err != nil {
-				log.Error(err, "not a valid cron job")
-				validated = false
-			}
-			parseLocation, err := ValidateScheduleLocation(item.Schedules.Location)
-			if err != nil {
-				log.Error(err, "not a valid location timestamp")
-				validated = false
-			}
-			validated = true
-			requeuAfter := nextSnapshotDuration(parseCron, parseLocation, now)
-			klog.Infof("Time to the next snapshot is: %s", requeuAfter)
-
-			if pvcExisted && validated {
-				snapshotSchedulerList2Update = append(snapshotSchedulerList2Update, item)
-				// -> check duration time to request
+			for i := range item.Schedules {
+				// check validate and convert to cron.Schedule type
+				parseCron, err := ValidateCronSpec(item.Schedules[i].Start)
+				if err != nil {
+					log.Error(err, "not a valid cron job")
+					validated = false
+				}
+				parseLocation, err := ValidateScheduleLocation(item.Schedules[i].Location)
+				if err != nil {
+					log.Error(err, "not a valid location timestamp")
+					validated = false
+				}
+				validated = true
 				requeuAfter := nextSnapshotDuration(parseCron, parseLocation, now)
-				// -> if it is time -> run request
-				// check condition of the time.Now() in compare to the previous snapshot time
-				previousTime := previousSnapshotDuration(parseCron, parseLocation, now)
-				klog.Infof("Time to the last snapshot is: %s", previousTime)
+				klog.Infof("Time to the next snapshot is: %s", requeuAfter)
 
-				if previousTime < time.Second && requeuAfter > 0 {
-					// run snapshot
-					err := createSnapshotScheduler(dynamicClientSet, item.Name, item.PvcName, item.Namespace)
-					if err != nil {
-						klog.Errorf("unable to create snap shot %s for persistentVolumeName %s in namespace %s", item.Name, item.PvcName, item.Namespace)
+				if pvcExisted && validated {
+					snapshotSchedulerList2Update = append(snapshotSchedulerList2Update, item)
+					// -> check duration time to request
+					requeuAfter := nextSnapshotDuration(parseCron, parseLocation, now)
+					// -> if it is time -> run request
+					// check condition of the time.Now() in compare to the previous snapshot time
+					previousTime := previousSnapshotDuration(parseCron, parseLocation, now)
+					klog.Infof("Time to the last snapshot is: %s", previousTime)
+
+					if previousTime < time.Second && requeuAfter > 0 {
+						// run snapshot
+						err := createSnapshotScheduler(dynamicClientSet, item.Name, item.PvcName, item.Namespace)
+						if err != nil {
+							klog.Errorf("unable to create snap shot %s for persistentVolumeName %s in namespace %s", item.Name, item.PvcName, item.Namespace)
+						}
+						// append the next snapshot time
+						requeuAfterList = append(requeuAfterList, requeuAfter)
+					} else {
+						requeuAfterList = append(requeuAfterList, requeuAfter)
 					}
-					// append the next snapshot time
-					requeuAfterList = append(requeuAfterList, requeuAfter)
-				} else {
-					requeuAfterList = append(requeuAfterList, requeuAfter)
 				}
 			}
 		}
+
+		// Check retention -> check RetentionPolicyType -> None skip -> Duration check
+		// Get all snapshots -> check source PVC + namespace -> check time -> exceeded then delete
 	}
 	if len(requeuAfterList) != 0 {
 		sort.Slice(requeuAfterList, func(i, j int) bool {

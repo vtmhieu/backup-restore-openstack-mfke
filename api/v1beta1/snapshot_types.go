@@ -44,11 +44,33 @@ type Delete struct {
 }
 
 type SnapshotScheduler struct {
-	Name      string    `json:"name,omitempty"`
-	PvcName   string    `json:"pvcName,omitempty"`
-	Namespace string    `json:"namespace,omitempty"`
-	Schedules Scheduler `json:"schedule,omitempty"`
+	Name            string                  `json:"name,omitempty"`
+	PvcName         string                  `json:"pvcName,omitempty"`
+	Namespace       string                  `json:"namespace,omitempty"`
+	Schedules       []Scheduler             `json:"schedule,omitempty"`
+	RetentionPolicy SnapshotRetentionPolicy `json:"retentionPolicy,omitempty"`
 }
+
+// SnapshotRetentionPolicy defines the policy for retaining snapshots.
+type SnapshotRetentionPolicy struct {
+	Type        RetentionPolicyType `json:"type,omitempty"`
+	MaxDuration MaxDuration         `json:"maxDuration,omitempty"`
+}
+
+// RetentionType defines the desired kind of retention, such as store maximum 7 snapshots, or store any snapshot within 1 month
+type RetentionPolicyType string
+
+type MaxDuration string
+
+const (
+	None              RetentionPolicyType = "None"
+	StoreMaxSnapshots RetentionPolicyType = "StoreMaxSnapshots"
+	StoreWithinMonth  RetentionPolicyType = "StoreWithinMonth"
+
+	SevenDays   MaxDuration = "SevenDays"
+	FifteenDays MaxDuration = "FifteenDays"
+	OneMonth    MaxDuration = "OneMonth"
+)
 
 type Scheduler struct {
 	Start    string `json:"start,omitempty"`
