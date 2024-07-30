@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -177,6 +178,8 @@ func (r *RestorePvcReconciler) ReconcileRestorePvc(ctx context.Context, c client
 	// get namespace in seed
 	namespace := restorePvc.Namespace
 	clusterName := namespace[4:]
+	currentTimeString := convertTimeNow2String(time.Now())
+
 	// get kubeconfig
 	shootKubeconfigDataString, err := GetSecretShootKubeconfig(ctx, c, namespace)
 	if err != nil {
@@ -188,9 +191,13 @@ func (r *RestorePvcReconciler) ReconcileRestorePvc(ctx context.Context, c client
 		return fmt.Errorf("unable to create shoot client set %s: %v", clusterName, err)
 	}
 	// define the name for restore pvc
-	restorePvcName := restorePvc.Spec.SourcePvcName + "-restore-snapshot"
+	restorePvcName := restorePvc.Spec.SourcePvcName + "-restore-" + currentTimeString
 	// restore PVC
-	err = r.restorePvc(shootClientSet, restorePvcName, restorePvc.Spec.Namespace, restorePvc.Spec.SnapshotName, restorePvc.Spec.AccessModes, restorePvc.Spec.Storage)
+	if restorePvc.Spec.RestorePvcName != "" {
+		err = r.restorePvc(shootClientSet, restorePvc.Spec.RestorePvcName, restorePvc.Spec.Namespace, restorePvc.Spec.SnapshotName, restorePvc.Spec.AccessModes, restorePvc.Spec.Storage)
+	} else {
+		err = r.restorePvc(shootClientSet, restorePvcName, restorePvc.Spec.Namespace, restorePvc.Spec.SnapshotName, restorePvc.Spec.AccessModes, restorePvc.Spec.Storage)
+	}
 	if err != nil {
 		restorePvc.Status.Success = false
 		return fmt.Errorf("unable to restore pvc %s from snapshot %s in shoot %s: %v", restorePvc.Spec.SourcePvcName, restorePvc.Spec.SnapshotName, clusterName, err)

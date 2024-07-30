@@ -341,7 +341,11 @@ func getVolumeSnapShot(dynamicClienSet *dynamic.DynamicClient,
 			fmt.Println("Error accessing metadata creationTimestamp:", err)
 			pvSnapshot.CreationTime = Unknown
 		} else {
-			pvSnapshot.CreationTime = creationTimestamp
+			convertCreationTimeStamp, err := convertToUTCPlus7(creationTimestamp)
+			if err != nil {
+				convertCreationTimeStamp = creationTimestamp
+			}
+			pvSnapshot.CreationTime = convertCreationTimeStamp
 		}
 
 		// get readyToUse
@@ -366,6 +370,40 @@ func getVolumeSnapShot(dynamicClienSet *dynamic.DynamicClient,
 		pvSnapshotItemList = append(pvSnapshotItemList, pvSnapshot)
 	}
 	return pvSnapshotItemList, nil
+}
+
+func convertToUTCPlus7(timeStr string) (string, error) {
+	returnTime := ""
+	// Parse the input time string as a time.Time object
+	utcTime, err := time.Parse(time.RFC3339, timeStr)
+	if err != nil {
+		return "", err
+	}
+
+	// Define the UTC+7 time zone
+	utcPlus7 := time.FixedZone("UTC+7", 7*60*60)
+
+	// Convert the UTC time to UTC+7
+	localTime := utcTime.In(utcPlus7)
+	returnTime = localTime.Format(time.RFC3339)
+	// Return the converted time as a string in ISO 8601 format
+	return returnTime, nil
+}
+
+func calculateDuration(timeStr string) (time.Duration, error) {
+	// Parse the input time string as a time.Time object
+	parsedTime, err := time.Parse(time.RFC3339, timeStr)
+	if err != nil {
+		return 0, err
+	}
+
+	// Get the current time
+	now := time.Now()
+
+	// Calculate the duration between the parsed time and the current time
+	duration := now.Sub(parsedTime)
+
+	return duration, nil
 }
 
 // // get pvSnapshot crds
@@ -517,4 +555,22 @@ func createSnapshotScheduler(dynamicClientSet *dynamic.DynamicClient, name strin
 	err = createSnapshot(dynamicClientSet, name, volumeSnapshotClassName, pvcName, namespace)
 
 	return err
+}
+
+func getPvSnapshotListPerNamespace(dynamicClienSet *dynamic.DynamicClient, namespace string) ([]snapshotv1beta1.PvSnapshotItem, error) {
+	snapshotList := []snapshotv1beta1.PvSnapshotItem{}
+
+	klog.Infof("Checking snapshot in namespace: %s", namespace)
+	resp, err := getVolumeSnapShot(dynamicClienSet, namespace)
+	if err != nil {
+		fmt.Printf("Unable to get Snapshot List in shoot cluster namespace: %s", namespace)
+		return snapshotList, err
+	}
+	if len(resp) != 0 {
+		snapshotList = append(snapshotList, resp...)
+	} else {
+		klog.Infof("There is no PV Snapshot in ns: %s", namespace)
+	}
+
+	return snapshotList, nil
 }

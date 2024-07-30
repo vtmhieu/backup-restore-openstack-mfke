@@ -21,4 +21,9 @@ const (
 	volumeSnapshotClassName = "csi-cinder-snapclass"
 
 	Unknown = "N/A"
+
+	OneHour     = "OneHour"
+	SevenDays   = "SevenDays"
+	FifteenDays = "FifteenDays"
+	OneMonth    = "OneMonth"
 )

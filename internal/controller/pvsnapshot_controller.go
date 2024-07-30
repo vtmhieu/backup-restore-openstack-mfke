@@ -203,7 +203,7 @@ func (r *PvSnapshotReconciler) ReconcilePvSnapshot(ctx context.Context, c client
 	klog.Infof("List of namespace %v", namespaceList)
 
 	// get all PVC existing in shoot
-	pvSnapshotStatus, err := getPvSnapshot(dynamicClientSet, namespaceList)
+	pvSnapshotStatus, err := getPvSnapshotStatus(dynamicClientSet, namespaceList)
 	if err != nil {
 		return fmt.Errorf("unable to get pvc list in shoot %s: %v", clusterName, err)
 	}
@@ -222,10 +222,10 @@ func (r *PvSnapshotReconciler) ReconcilePvSnapshot(ctx context.Context, c client
 	return nil
 }
 
-func getPvSnapshot(dynamicClienSet *dynamic.DynamicClient, namespaceList []string) (snapshotv1beta1.PvSnapshotStatus, error) {
+func getPvSnapshotStatus(dynamicClienSet *dynamic.DynamicClient, namespaceList []string) (snapshotv1beta1.PvSnapshotStatus, error) {
 	pvSnapshotStatus := snapshotv1beta1.PvSnapshotStatus{}
 	for _, ns := range namespaceList {
-		klog.Infof("Checking snapshot in namespace: %s", ns)
+		//klog.Infof("Checking snapshot in namespace: %s", ns)
 		resp, err := getVolumeSnapShot(dynamicClienSet, ns)
 		if err != nil {
 			fmt.Printf("Unable to get Snapshot List in shoot cluster namespace: %s", ns)
