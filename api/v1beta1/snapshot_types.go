@@ -26,8 +26,7 @@ import (
 // SnapshotSpec defines the desired state of Snapshot
 type SnapshotSpec struct {
 	SnapshotSchedulerList []SnapshotScheduler `json:"snapshotSchedulerList,omitempty"`
-	Create                Create              `json:"create,omitempty"`
-	Delete                Delete              `json:"delete,omitempty"`
+	Request               Request             `json:"request,omitempty"`
 }
 
 type Create struct {
@@ -38,6 +37,21 @@ type Create struct {
 type Delete struct {
 	Name      string `json:"name,omitempty"`
 	Namespace string `json:"namespace,omitempty"`
+}
+
+type Request struct {
+	Method       string `json:"method,omitempty"`
+	PvcName      string `json:"pvcName,omitempty"`
+	SnapshotName string `json:"snapshotName,omitempty"`
+	Namespace    string `json:"namespace,omitempty"`
+}
+
+type RequestStatus struct {
+	Method       string `json:"method,omitempty"`
+	PvcName      string `json:"pvcName,omitempty"`
+	SnapshotName string `json:"snapshotName,omitempty"`
+	Namespace    string `json:"namespace,omitempty"`
+	Status       string `json:"status,omitempty"`
 }
 
 type SnapshotScheduler struct {
@@ -74,9 +88,7 @@ type Scheduler struct {
 type SnapshotStatus struct {
 	Conditions            []metav1.Condition  `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
 	SnapshotSchedulerList []SnapshotScheduler `json:"snapshotSchedulerList,omitempty"`
-
-	CreateSuccess bool `json:"createSuccess,omitempty"`
-	DeleteSuccess bool `json:"deleteSuccess,omitempty"`
+	RequestStatus         RequestStatus       `json:"requestStatus,omitempty"`
 }
 
 //+kubebuilder:object:root=true

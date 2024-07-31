@@ -39,18 +39,15 @@ spec:
           spec:
             description: SnapshotSpec defines the desired state of Snapshot
             properties:
-              create:
+              request:
                 properties:
+                  method:
+                    type: string
                   namespace:
                     type: string
                   pvcName:
                     type: string
-                type: object
-              delete:
-                properties:
-                  name:
-                    type: string
-                  namespace:
+                  snapshotName:
                     type: string
                 type: object
               snapshotSchedulerList:
@@ -155,10 +152,19 @@ spec:
                   - type
                   type: object
                 type: array
-              createSuccess:
-                type: boolean
-              deleteSuccess:
-                type: boolean
+              requestStatus:
+                properties:
+                  method:
+                    type: string
+                  namespace:
+                    type: string
+                  pvcName:
+                    type: string
+                  snapshotName:
+                    type: string
+                  status:
+                    type: string
+                type: object
               snapshotSchedulerList:
                 items:
                   properties:
