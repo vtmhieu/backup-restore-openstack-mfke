@@ -22,6 +22,7 @@ const (
 
 	Unknown = "N/A"
 
+	OneMinute   = "OneMinute"
 	OneHour     = "OneHour"
 	SevenDays   = "SevenDays"
 	FifteenDays = "FifteenDays"

@@ -1,0 +1,12 @@
+apiVersion: snapshot.mfke.io/v1beta1
+kind: SchedulerSnapshot
+metadata:
+  labels:
+    app.kubernetes.io/name: schedulersnapshot
+    app.kubernetes.io/instance: schedulersnapshot-sample
+    app.kubernetes.io/part-of: backup-restore-openstack-mfke
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: backup-restore-openstack-mfke
+  name: schedulersnapshot-sample
+spec:
+  # TODO(user): Add fields here

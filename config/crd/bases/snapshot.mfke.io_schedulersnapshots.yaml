@@ -4,20 +4,20 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.14.0
-  name: snapshots.snapshot.mfke.io
+  name: schedulersnapshots.snapshot.mfke.io
 spec:
   group: snapshot.mfke.io
   names:
-    kind: Snapshot
-    listKind: SnapshotList
-    plural: snapshots
-    singular: snapshot
+    kind: SchedulerSnapshot
+    listKind: SchedulerSnapshotList
+    plural: schedulersnapshots
+    singular: schedulersnapshot
   scope: Namespaced
   versions:
   - name: v1beta1
     schema:
       openAPIV3Schema:
-        description: Snapshot is the Schema for the snapshots API
+        description: SchedulerSnapshot is the Schema for the schedulersnapshots API
         properties:
           apiVersion:
             description: |-
@@ -37,17 +37,40 @@ spec:
           metadata:
             type: object
           spec:
-            description: SnapshotSpec defines the desired state of Snapshot
+            description: SchedulerSnapshotSpec defines the desired state of SchedulerSnapshot
             properties:
-              namespace:
-                type: string
-              pvcName:
-                type: string
-              snapshotName:
-                type: string
+              snapshotSchedulerList:
+                items:
+                  properties:
+                    name:
+                      type: string
+                    namespace:
+                      type: string
+                    pvcName:
+                      type: string
+                    retentionPolicy:
+                      description: SnapshotRetentionPolicy defines the policy for
+                        retaining snapshots.
+                      properties:
+                        maxDuration:
+                          type: string
+                        type:
+                          type: string
+                      type: object
+                    schedule:
+                      items:
+                        properties:
+                          location:
+                            type: string
+                          start:
+                            type: string
+                        type: object
+                      type: array
+                  type: object
+                type: array
             type: object
           status:
-            description: CreateSnapshotStatus defines the observed state of CreateSnapshot
+            description: SchedulerSnapshotStatus defines the observed state of SchedulerSnapshot
             properties:
               conditions:
                 items:
@@ -118,24 +141,35 @@ spec:
                   - type
                   type: object
                 type: array
-              creationTime:
-                type: string
-              namespace:
-                type: string
-              pvcName:
-                type: string
-              readyToUse:
-                type: boolean
-              restoreSize:
-                type: string
-              snapshotContentName:
-                type: string
-              snapshotName:
-                type: string
-              status:
-                type: string
-              volumeSnapshotClassName:
-                type: string
+              snapshotSchedulerList:
+                items:
+                  properties:
+                    name:
+                      type: string
+                    namespace:
+                      type: string
+                    pvcName:
+                      type: string
+                    retentionPolicy:
+                      description: SnapshotRetentionPolicy defines the policy for
+                        retaining snapshots.
+                      properties:
+                        maxDuration:
+                          type: string
+                        type:
+                          type: string
+                      type: object
+                    schedule:
+                      items:
+                        properties:
+                          location:
+                            type: string
+                          start:
+                            type: string
+                        type: object
+                      type: array
+                  type: object
+                type: array
             type: object
         type: object
     served: true

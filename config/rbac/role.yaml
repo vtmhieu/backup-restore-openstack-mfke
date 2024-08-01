@@ -85,6 +85,32 @@ rules:
 - apiGroups:
   - snapshot.mfke.io
   resources:
+  - schedulersnapshots
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - snapshot.mfke.io
+  resources:
+  - schedulersnapshots/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - snapshot.mfke.io
+  resources:
+  - schedulersnapshots/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - snapshot.mfke.io
+  resources:
   - snapshots
   verbs:
   - create

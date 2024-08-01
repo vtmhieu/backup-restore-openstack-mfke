@@ -44,4 +44,13 @@ resources:
   kind: CreateSnapshot
   path: github.com/vtmhieu/backup-restore-openstack-mfke.git/api/v1beta1
   version: v1beta1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: mfke.io
+  group: snapshot
+  kind: SchedulerSnapshot
+  path: github.com/vtmhieu/backup-restore-openstack-mfke.git/api/v1beta1
+  version: v1beta1
 version: "3"

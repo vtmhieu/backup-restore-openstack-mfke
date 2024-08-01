@@ -19,9 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
-	"sort"
 	"strings"
-	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -111,109 +109,53 @@ func (r *CreateSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	// define the finalizer for PVC
 	if snapshot.ObjectMeta.DeletionTimestamp.IsZero() {
-		// Reconcile snapshot Schedule
-		SnapshotSchedulerListReturn, requeueAfter, err := r.ReconcileScheduleSnapshot(ctx, r.Client, snapshot)
-		if err != nil {
-			klog.Info("Reconcile snapshot Failed")
-			//update status
-			meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{Type: "Available",
-				Status: metav1.ConditionFalse, Reason: "Reconciling",
-				Message: fmt.Sprintf("Failed to reconcile for the custom resource (%s): (%s)", snapshot.Name, err)})
-			snapshot.Status.SnapshotSchedulerList = SnapshotSchedulerListReturn
-			if err := r.Status().Update(ctx, snapshot); err != nil {
-				log.Error(err, "Failed to update snapshot crds status")
-				return ctrl.Result{RequeueAfter: requeueAfter}, err
-			}
-			return ctrl.Result{RequeueAfter: requeueAfter}, err
-		}
-		meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{Type: "Available",
-			Status: metav1.ConditionTrue, Reason: "Reconciling",
-			Message: fmt.Sprintf("Snapshot schedule %s in shoot %s is reconciled", snapshot.Name, snapshot.Namespace)})
-		snapshot.Status.SnapshotSchedulerList = SnapshotSchedulerListReturn
-		//snapshot.Status.RequeueAfter = requeueAfter
-		if err := r.Status().Update(ctx, snapshot); err != nil {
-			log.Error(err, "Failed to update snapshot crds status")
-			return ctrl.Result{RequeueAfter: requeueAfter}, err
-		}
-
 		// CREATE snapshot
-		if snapshot.Annotations[CreateSnapshotEnabledAnnotation] == "true" {
-			if err := r.ReconcileCreateSnapshot(ctx, r.Client, snapshot); err != nil {
-				klog.Info("Reconcile createSnapshot Failed")
-				meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{Type: "Available",
-					Status: metav1.ConditionFalse, Reason: "Create",
-					Message: fmt.Sprintf("Failed to create snapshot for the PVC (%s): (%s)", snapshot.Spec.Request.PvcName, err)})
-
-				snapshot.Status.RequestStatus = snapshotv1beta1.RequestStatus{
-					Method:       snapshot.Spec.Request.Method,
-					PvcName:      snapshot.Spec.Request.PvcName,
-					SnapshotName: snapshot.Spec.Request.SnapshotName,
-					Namespace:    snapshot.Spec.Request.Namespace,
-					Status:       "False",
-				}
-				if err := r.Status().Update(ctx, snapshot); err != nil {
-					log.Error(err, "Failed to update snapshot crds status")
-					return ctrl.Result{RequeueAfter: requeueAfter}, err
-				}
-				return ctrl.Result{RequeueAfter: requeueAfter}, err
-			}
-			log.V(1).Info("Reconcile", "Snapshot has been successfully created", req.Namespace)
+		snapshotReturn, err := r.ReconcileCreateSnapshot(ctx, r.Client, snapshot)
+		if err != nil {
+			klog.Info("Reconcile createSnapshot Failed")
 			meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{Type: "Available",
-				Status: metav1.ConditionTrue, Reason: "Create",
-				Message: fmt.Sprintf("Snapshot in shoot %s is created successfully", snapshot.Namespace)})
-			klog.Infof("Status of Snapshot %v", snapshot.Status.Conditions)
-			snapshot.Status.RequestStatus = snapshotv1beta1.RequestStatus{
-				Method:       snapshot.Spec.Request.Method,
-				PvcName:      snapshot.Spec.Request.PvcName,
-				SnapshotName: snapshot.Spec.Request.SnapshotName,
-				Namespace:    snapshot.Spec.Request.Namespace,
-				Status:       "True",
-			}
-			if err := r.Status().Update(ctx, snapshot); err != nil {
-				log.Error(err, "Failed to update snapshot crds status")
-				return ctrl.Result{RequeueAfter: requeueAfter}, err
-			}
-		}
+				Status: metav1.ConditionFalse, Reason: "Create",
+				Message: fmt.Sprintf("Failed to create snapshot for the PVC (%s): (%s)", snapshot.Spec.PvcName, err)})
 
-		// DELETE snapshot
-		if snapshot.Annotations[DeleteSnapshotEnabledAnnotation] == "true" {
-			if err := r.ReconcileDeleteSnapshot(ctx, r.Client, snapshot); err != nil {
-				klog.Info("Reconcile createSnapshot Failed")
-				meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{Type: "Available",
-					Status: metav1.ConditionFalse, Reason: "Delete",
-					Message: fmt.Sprintf("Failed to delete snapshot (%s): (%s)", snapshot.Spec.Request.SnapshotName, err)})
-
-				snapshot.Status.RequestStatus = snapshotv1beta1.RequestStatus{
-					Method:       snapshot.Spec.Request.Method,
-					PvcName:      snapshot.Spec.Request.PvcName,
-					SnapshotName: snapshot.Spec.Request.SnapshotName,
-					Namespace:    snapshot.Spec.Request.Namespace,
-					Status:       "False",
-				}
-				if err := r.Status().Update(ctx, snapshot); err != nil {
-					log.Error(err, "Failed to update snapshot crds status")
-					return ctrl.Result{RequeueAfter: requeueAfter}, err
-				}
-				return ctrl.Result{RequeueAfter: requeueAfter}, err
+			newStatus := snapshotv1beta1.SnapshotStatus{
+				SourcePvcName:           snapshot.Spec.PvcName,
+				SnapshotName:            snapshot.Name,
+				Namespace:               snapshot.Spec.Namespace,
+				VolumeSnapshotClassName: snapshotReturn.VolumeSnapshotClassName,
+				SnapshotContentName:     snapshotReturn.SnapshotContentName,
+				CreationTime:            snapshotReturn.CreationTime,
+				ReadyToUse:              snapshotReturn.ReadyToUse,
+				RestoreSize:             snapshotReturn.RestoreSize,
+				Status:                  "False",
 			}
-			log.V(1).Info("Reconcile", "Snapshot has been successfully deleted", req.Namespace)
-			meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{Type: "Available",
-				Status: metav1.ConditionTrue, Reason: "Delete",
-				Message: fmt.Sprintf("Snapshot %s in shoot %s is Deleted", snapshot.Spec.Request.SnapshotName, snapshot.Namespace)})
-			klog.Infof("Status of createSnapshot %v", snapshot.Status.Conditions)
-			snapshot.Status.RequestStatus = snapshotv1beta1.RequestStatus{
-				Method:       snapshot.Spec.Request.Method,
-				PvcName:      snapshot.Spec.Request.PvcName,
-				SnapshotName: snapshot.Spec.Request.SnapshotName,
-				Namespace:    snapshot.Spec.Request.Namespace,
-				Status:       "True",
+			if err := r.updateSnapshotStatus(ctx, snapshot, newStatus); err != nil {
+				log.Error(err, "Failed to update snapshot CRD status")
+				return ctrl.Result{}, err
 			}
-			if err := r.Status().Update(ctx, snapshot); err != nil {
-				log.Error(err, "Failed to update createSnapshot crds status")
-				return ctrl.Result{RequeueAfter: requeueAfter}, err
-			}
+			return ctrl.Result{}, err
 		}
-		return ctrl.Result{RequeueAfter: requeueAfter}, err
+		log.V(1).Info("Reconcile", "Snapshot has been successfully created", req.Namespace)
+		meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{Type: "Available",
+			Status: metav1.ConditionTrue, Reason: "Create",
+			Message: fmt.Sprintf("Snapshot in shoot %s is created successfully", snapshot.Namespace)})
+		klog.Infof("Status of Snapshot %v", snapshot.Status.Conditions)
+		newStatus := snapshotv1beta1.SnapshotStatus{
+			SourcePvcName:           snapshot.Spec.PvcName,
+			SnapshotName:            snapshot.Name,
+			Namespace:               snapshot.Spec.Namespace,
+			VolumeSnapshotClassName: snapshotReturn.VolumeSnapshotClassName,
+			SnapshotContentName:     snapshotReturn.SnapshotContentName,
+			CreationTime:            snapshotReturn.CreationTime,
+			ReadyToUse:              snapshotReturn.ReadyToUse,
+			RestoreSize:             snapshotReturn.RestoreSize,
+			Status:                  "True",
+		}
+		if err := r.updateSnapshotStatus(ctx, snapshot, newStatus); err != nil {
+			log.Error(err, "Failed to update snapshot CRD status")
+			return ctrl.Result{}, err
+		}
+		// reconcile schedule List
+		return ctrl.Result{}, nil
 	} else {
 		meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{Type: "Degraded",
 			Status: metav1.ConditionUnknown, Reason: "Finalizing",
@@ -238,11 +180,11 @@ func (r *CreateSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			}
 		}
 		if controllerutil.ContainsFinalizer(snapshot, SnapshotFinalizerName) {
-			// if err := r.delete(ctx, log, falco); err != nil {
-			// 	return ctrl.Result{}, err
-			// }
-			// log.V(1).Info("Reconcile", "Falco is deleted successfully in shoot", req.Namespace)
-			// remove our finalizer from the list and update it.
+			if err := r.DeleteSnapshot(ctx, r.Client, snapshot); err != nil {
+				return ctrl.Result{}, err
+			}
+			log.V(1).Info("Reconcile", "Snapshot is deleted successfully in shoot", req.Namespace)
+			//remove our finalizer from the list and update it.
 			if ok := controllerutil.RemoveFinalizer(snapshot, SnapshotFinalizerName); !ok {
 				log.Error(err, "Failed to remove finalizer for Snapshot crds")
 				return ctrl.Result{Requeue: true}, nil
@@ -256,208 +198,43 @@ func (r *CreateSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 }
 
-func (r *CreateSnapshotReconciler) ReconcileScheduleSnapshot(ctx context.Context, c client.Client, scheduleSnapshot *snapshotv1beta1.Snapshot) ([]snapshotv1beta1.SnapshotScheduler, time.Duration, error) {
-	log := log.FromContext(ctx)
-	requeueAfter := 20 * time.Minute
-	snapshotSchedulerList2Update := []snapshotv1beta1.SnapshotScheduler{}
-
-	// get namespace in seed
-	namespace := scheduleSnapshot.Namespace
-	clusterName := namespace[4:]
-	// get kubeconfig
-	shootKubeconfigDataString, err := GetSecretShootKubeconfig(ctx, c, namespace)
-	if err != nil {
-		return snapshotSchedulerList2Update, requeueAfter, fmt.Errorf("unable to get shoot secret data kubeconfig in ns %s: %v", clusterName, err)
-	}
-	// create shoot client set from this kubeconfig data
-	shootClientSet, err := CreateShootKubeClient(ctx, shootKubeconfigDataString, clusterName)
-	if err != nil {
-		return snapshotSchedulerList2Update, requeueAfter, fmt.Errorf("unable to create shoot client set %s: %v", clusterName, err)
-	}
-
-	dynamicClientSet, err := CreateDynamicKubeClient(ctx, shootKubeconfigDataString)
-	if err != nil {
-		return snapshotSchedulerList2Update, requeueAfter, fmt.Errorf("unable to create dynamic shoot client set %s: %v", clusterName, err)
-	}
-	// get namespace in shoot
-	namespaceList, err := GetNamespace(shootClientSet)
-	if err != nil {
-		return snapshotSchedulerList2Update, requeueAfter, fmt.Errorf("unable to create shoot client set %s: %v", clusterName, err)
-	}
-	klog.Infof("List of namespace %v", namespaceList)
-
-	// get all PVC existing in shoot
-	pvcList, err := getPVC(shootClientSet, namespaceList)
-	if err != nil {
-		return snapshotSchedulerList2Update, requeueAfter, fmt.Errorf("unable to get pvc list in shoot %s: %v", clusterName, err)
-	}
-	requeuAfterList := []time.Duration{}
-
-	now := time.Now()
-
-	// -> run through each SnapshotScheduler
-	if len(scheduleSnapshot.Spec.SnapshotSchedulerList) != 0 {
-		for _, item := range scheduleSnapshot.Spec.SnapshotSchedulerList {
-			// -> check pvc exist?
-			pvcExisted := false
-			for _, pvc := range pvcList.PVCList {
-				if (item.PvcName == pvc.PvcName) && (item.Namespace == pvc.Namespace) {
-					pvcExisted = true
-					break
-				}
-			}
-			// -> check validation of schedule
-			validated := false
-			if len(item.Schedules) != 0 {
-				for i := range item.Schedules {
-					// check validate and convert to cron.Schedule type
-					parseCron, err := ValidateCronSpec(item.Schedules[i].Start)
-					if err != nil {
-						log.Error(err, "not a valid cron job")
-						validated = false
-					}
-					parseLocation, err := ValidateScheduleLocation(item.Schedules[i].Location)
-					if err != nil {
-						log.Error(err, "not a valid location timestamp")
-						validated = false
-					}
-					validated = true
-					requeuAfter := nextSnapshotDuration(parseCron, parseLocation, now)
-					klog.Infof("Time to the next snapshot is: %s", requeuAfter)
-
-					if pvcExisted && validated {
-						snapshotSchedulerList2Update = append(snapshotSchedulerList2Update, item)
-						// -> check duration time to request
-						requeuAfter := nextSnapshotDuration(parseCron, parseLocation, now)
-						// -> if it is time -> run request
-						// check condition of the time.Now() in compare to the previous snapshot time
-						previousTime := previousSnapshotDuration(parseCron, parseLocation, now)
-						klog.Infof("Time to the last snapshot is: %s", previousTime)
-
-						if previousTime < time.Second && requeuAfter > 0 {
-							// run snapshot
-							err := createSnapshotScheduler(dynamicClientSet, item.Name, item.PvcName, item.Namespace)
-							if err != nil {
-								klog.Errorf("unable to create snap shot %s for persistentVolumeName %s in namespace %s", item.Name, item.PvcName, item.Namespace)
-							}
-							// append the next snapshot time
-							requeuAfterList = append(requeuAfterList, requeuAfter)
-						} else {
-							requeuAfterList = append(requeuAfterList, requeuAfter)
-						}
-					}
-				}
-			}
-
-			// Check RETENTION -> check RetentionPolicyType -> None skip -> Duration check
-			if item.RetentionPolicy.Type != "" {
-				if item.RetentionPolicy.Type == snapshotv1beta1.StoreWithinDuration && item.RetentionPolicy.MaxDuration != "" {
-					// get snapshot list based on namespace
-					snapshotListReturn, err := getPvSnapshotListPerNamespace(dynamicClientSet, item.Namespace)
-					if err != nil {
-						klog.Errorf("Unabled to get snapshot list in namespace %s for Retention Reconcilation", item.Namespace)
-					}
-					for _, snapshot := range snapshotListReturn {
-						// check if snapshot has SourcePvcName == Scheduler PvcName
-						if snapshot.SourcePvcName == item.PvcName {
-							// check from creation time til now + compare to MaxDuration -> delete if needed
-							duration, err := calculateDuration(snapshot.CreationTime)
-							if err != nil {
-								fmt.Println("Error calculating duration:", err)
-								continue
-							}
-							klog.Infof("The duration from creation time of Snapshot %s til now is : %s", snapshot.SnapshotName, duration)
-							if item.RetentionPolicy.MaxDuration == SevenDays {
-								if duration > 7*24*time.Hour || duration == 7*24*time.Hour {
-									if err := deleteSnapshot(dynamicClientSet, snapshot.SnapshotName, snapshot.Namespace); err != nil {
-										klog.Errorf("Unabled to delete snapshot %s in namespace %s due to exceed Retention", snapshot.SnapshotName, item.Namespace)
-									} else {
-										klog.Infof("Successfully delete snapshot %s in namespace %s due to Retention", snapshot.SnapshotName, item.Namespace)
-									}
-								} else {
-									timeleft := 7*24*time.Hour - duration
-									requeuAfterList = append(requeuAfterList, timeleft)
-								}
-							} else if item.RetentionPolicy.MaxDuration == FifteenDays {
-								if duration > 15*24*time.Hour || duration == 15*24*time.Hour {
-									if err := deleteSnapshot(dynamicClientSet, snapshot.SnapshotName, snapshot.Namespace); err != nil {
-										klog.Errorf("Unabled to delete snapshot %s in namespace %s due to exceed Retention", snapshot.SnapshotName, item.Namespace)
-									} else {
-										klog.Infof("Successfully delete snapshot %s in namespace %s due to Retention", snapshot.SnapshotName, item.Namespace)
-									}
-								} else {
-									timeleft := 15*24*time.Hour - duration
-									requeuAfterList = append(requeuAfterList, timeleft)
-								}
-							} else if item.RetentionPolicy.MaxDuration == OneMonth {
-								if duration > 30*24*time.Hour || duration == 30*24*time.Hour {
-									if err := deleteSnapshot(dynamicClientSet, snapshot.SnapshotName, snapshot.Namespace); err != nil {
-										klog.Errorf("Unabled to delete snapshot %s in namespace %s due to exceed Retention", snapshot.SnapshotName, item.Namespace)
-									} else {
-										klog.Infof("Successfully delete snapshot %s in namespace %s due to Retention", snapshot.SnapshotName, item.Namespace)
-									}
-								} else {
-									timeleft := 30*24*time.Hour - duration
-									requeuAfterList = append(requeuAfterList, timeleft)
-								}
-							} else if item.RetentionPolicy.MaxDuration == OneHour {
-								if duration > time.Hour || duration == time.Hour {
-									if err := deleteSnapshot(dynamicClientSet, snapshot.SnapshotName, snapshot.Namespace); err != nil {
-										klog.Errorf("Unabled to delete snapshot %s in namespace %s due to exceed Retention", snapshot.SnapshotName, item.Namespace)
-									} else {
-										klog.Infof("Successfully delete snapshot %s in namespace %s due to Retention", snapshot.SnapshotName, item.Namespace)
-									}
-								} else {
-									timeleft := time.Hour - duration
-									requeuAfterList = append(requeuAfterList, timeleft)
-								}
-							}
-						}
-					}
-
-				}
-			}
-		}
-	}
-	if len(requeuAfterList) != 0 {
-		sort.Slice(requeuAfterList, func(i, j int) bool {
-			return requeuAfterList[i] < requeuAfterList[j]
-		})
-		klog.Infof("the requeue list is: %v", requeuAfterList)
-		// -> pick the shortest time to reconcile
-		requeueAfter = requeuAfterList[0]
-	}
-	// -> requeue
-	klog.Infof("the reconcile will requeue after: %s", requeueAfter)
-
-	if scheduleSnapshot.Annotations[SnapshotReconcileAnnotation] == "true" {
-		delete(scheduleSnapshot.Annotations, SnapshotReconcileAnnotation)
-		if err := r.Update(ctx, scheduleSnapshot); err != nil {
-			return snapshotSchedulerList2Update, requeueAfter, fmt.Errorf("error to delete annotation %s in createSnapshot resource: [%v]", DeleteSnapshotEnabledAnnotation, err)
-		}
-	}
-	return snapshotSchedulerList2Update, requeueAfter, nil
-}
-
-func (r *CreateSnapshotReconciler) ReconcileCreateSnapshot(ctx context.Context, c client.Client, createSnapshot *snapshotv1beta1.Snapshot) error {
+// This reconcile flow check the snapshot if it existed in shoot, if it is not existed then create a new snapshot base on the object name
+func (r *CreateSnapshotReconciler) ReconcileCreateSnapshot(ctx context.Context, c client.Client, createSnapshot *snapshotv1beta1.Snapshot) (snapshotv1beta1.PvSnapshotItem, error) {
+	SnapshotReturn := snapshotv1beta1.PvSnapshotItem{}
 	// get namespace in seed
 	namespace := createSnapshot.Namespace
 	clusterName := namespace[4:]
 	// get kubeconfig
 	shootKubeconfigDataString, err := GetSecretShootKubeconfig(ctx, c, namespace)
 	if err != nil {
-		return fmt.Errorf("unable to get shoot secret data kubeconfig in ns %s: %v", clusterName, err)
+		return SnapshotReturn, fmt.Errorf("unable to get shoot secret data kubeconfig in ns %s: %v", clusterName, err)
 	}
-	// // create shoot client set from this kubeconfig data
-	// shootClientSet, err := CreateShootKubeClient(ctx, shootKubeconfigDataString, clusterName)
-	// if err != nil {
-	// 	return fmt.Errorf("unable to create shoot client set %s: %v", clusterName, err)
-	// }
 	// create dynamic client from this kubeconfig data -> send request for crds
 	dynamicClientSet, err := CreateDynamicKubeClient(ctx, shootKubeconfigDataString)
 	if err != nil {
-		return fmt.Errorf("unable to create dynamic shoot client set %s: %v", clusterName, err)
+		return SnapshotReturn, fmt.Errorf("unable to create dynamic shoot client set %s: %v", clusterName, err)
 	}
+
+	// check if snapshot existed?
+	// get snapshot list based on namespace
+	snapshotListReturn, err := getPvSnapshotListPerNamespace(dynamicClientSet, createSnapshot.Spec.Namespace)
+	if err != nil {
+		klog.Errorf("Unabled to get snapshot list in namespace %s ", createSnapshot.Spec.Namespace)
+	}
+
+	for _, snapshot := range snapshotListReturn {
+		if snapshot.SnapshotName == createSnapshot.Name && snapshot.SourcePvcName == createSnapshot.Spec.PvcName {
+			if createSnapshot.Annotations[CreateSnapshotEnabledAnnotation] == "true" {
+				delete(createSnapshot.Annotations, CreateSnapshotEnabledAnnotation)
+				if err := r.Update(ctx, createSnapshot); err != nil {
+					return snapshot, fmt.Errorf("error to delete annotation %s in createSnapshot resource: [%v]", CreateSnapshotEnabledAnnotation, err)
+				}
+			}
+			return snapshot, err
+		}
+	}
+
+	// since the snapshot is not existed -> create new snapshot
 
 	// check if volumeSnapshotClasses existed
 	volumeSnapshotClassesExisted, err := checkVolumeSnapshotClasses(dynamicClientSet)
@@ -473,28 +250,28 @@ func (r *CreateSnapshotReconciler) ReconcileCreateSnapshot(ctx context.Context, 
 	}
 
 	// create Snapshot base on input
-	err = r.createSnapshot(dynamicClientSet, volumeSnapshotClassName, createSnapshot.Spec.Request.PvcName, createSnapshot.Spec.Request.Namespace)
+	err = r.createSnapshot(dynamicClientSet, createSnapshot.Name, volumeSnapshotClassName, createSnapshot.Spec.PvcName, createSnapshot.Spec.Namespace)
 	if err != nil {
-		klog.Errorf("unable to create snapshot for persistentVolumeName %s in namespace %s", createSnapshot.Spec.Request.PvcName, createSnapshot.Spec.Request.Namespace)
+		klog.Errorf("unable to create snapshot for persistentVolumeName %s in namespace %s", createSnapshot.Spec.PvcName, createSnapshot.Spec.Namespace)
 	}
 
 	if createSnapshot.Annotations[CreateSnapshotEnabledAnnotation] == "true" {
 		delete(createSnapshot.Annotations, CreateSnapshotEnabledAnnotation)
 		if err := r.Update(ctx, createSnapshot); err != nil {
-			return fmt.Errorf("error to delete annotation %s in createSnapshot resource: [%v]", CreateSnapshotEnabledAnnotation, err)
+			return SnapshotReturn, fmt.Errorf("error to delete annotation %s in createSnapshot resource: [%v]", CreateSnapshotEnabledAnnotation, err)
 		}
 	}
-	return err
+	return SnapshotReturn, err
 }
 
-func (r *CreateSnapshotReconciler) createSnapshot(dynamicClientSet *dynamic.DynamicClient, volumeSnapshotClassName string, pvcName string, namespace string) error {
+func (r *CreateSnapshotReconciler) createSnapshot(dynamicClientSet *dynamic.DynamicClient, snapshotName string, volumeSnapshotClassName string, pvcName string, namespace string) error {
 	// Define the GroupVersionResource for VolumeSnapshotClass
 	gvr := schema.GroupVersionResource{
 		Group:    "snapshot.storage.k8s.io",
 		Version:  "v1",
 		Resource: VolumeSnapshot,
 	}
-	currentTimeString := convertTimeNow2String(time.Now())
+	//currentTimeString := convertTimeNow2String(time.Now())
 
 	// Create YAML content with user input
 	yamlContent := fmt.Sprintf(`
@@ -506,7 +283,7 @@ spec:
   volumeSnapshotClassName: %s
   source:
     persistentVolumeClaimName: %s
-`, pvcName+currentTimeString, volumeSnapshotClassName, pvcName)
+`, snapshotName, volumeSnapshotClassName, pvcName)
 
 	// Decode the YAML content
 	decoder := yaml.NewYAMLOrJSONDecoder(strings.NewReader(yamlContent), 100)
@@ -541,7 +318,7 @@ func deleteSnapshot(dynamicClientSet *dynamic.DynamicClient, snapshotName string
 	return nil
 }
 
-func (r *CreateSnapshotReconciler) ReconcileDeleteSnapshot(ctx context.Context, c client.Client, DeleteSnapshot *snapshotv1beta1.Snapshot) error {
+func (r *CreateSnapshotReconciler) DeleteSnapshot(ctx context.Context, c client.Client, DeleteSnapshot *snapshotv1beta1.Snapshot) error {
 	// get namespace in seed
 	namespace := DeleteSnapshot.Namespace
 	clusterName := namespace[4:]
@@ -550,29 +327,54 @@ func (r *CreateSnapshotReconciler) ReconcileDeleteSnapshot(ctx context.Context, 
 	if err != nil {
 		return fmt.Errorf("unable to get shoot secret data kubeconfig in ns %s: %v", clusterName, err)
 	}
-	// // create shoot client set from this kubeconfig data
-	// shootClientSet, err := CreateShootKubeClient(ctx, shootKubeconfigDataString, clusterName)
-	// if err != nil {
-	// 	return fmt.Errorf("unable to create shoot client set %s: %v", clusterName, err)
-	// }
 	// create dynamic client from this kubeconfig data -> send request for crds
 	dynamicClientSet, err := CreateDynamicKubeClient(ctx, shootKubeconfigDataString)
 	if err != nil {
 		return fmt.Errorf("unable to create dynamic shoot client set %s: %v", clusterName, err)
 	}
-	// delete Snapshot base on input
-	err = deleteSnapshot(dynamicClientSet, DeleteSnapshot.Spec.Request.SnapshotName, DeleteSnapshot.Spec.Request.Namespace)
+
+	// check if snapshot existed?
+	// get snapshot list based on namespace
+	snapshotListReturn, err := getPvSnapshotListPerNamespace(dynamicClientSet, DeleteSnapshot.Spec.Namespace)
 	if err != nil {
-		klog.Errorf("unable to delete snapshot %s  in namespace %s", DeleteSnapshot.Spec.Request.SnapshotName, DeleteSnapshot.Spec.Request.Namespace)
+		klog.Errorf("Unabled to get snapshot list in namespace %s ", DeleteSnapshot.Spec.Namespace)
 	}
 
-	if DeleteSnapshot.Annotations[DeleteSnapshotEnabledAnnotation] == "true" {
-		delete(DeleteSnapshot.Annotations, DeleteSnapshotEnabledAnnotation)
-		if err := r.Update(ctx, DeleteSnapshot); err != nil {
-			return fmt.Errorf("error to delete annotation %s in createSnapshot resource: [%v]", DeleteSnapshotEnabledAnnotation, err)
+	for _, snapshot := range snapshotListReturn {
+		if snapshot.SnapshotName == DeleteSnapshot.Name && snapshot.Namespace == DeleteSnapshot.Spec.Namespace {
+			// delete Snapshot base on input
+			err = deleteSnapshot(dynamicClientSet, DeleteSnapshot.Name, DeleteSnapshot.Spec.Namespace)
+			if err != nil {
+				klog.Errorf("unable to delete snapshot %s  in namespace %s", DeleteSnapshot.Spec.SnapshotName, DeleteSnapshot.Spec.Namespace)
+				return err
+			}
 		}
 	}
+
 	return err
+}
+
+func (r *CreateSnapshotReconciler) updateSnapshotStatus(ctx context.Context, snapshot *snapshotv1beta1.Snapshot, newStatus snapshotv1beta1.SnapshotStatus) error {
+	if !statusEqual(snapshot.Status, newStatus) {
+		snapshot.Status = newStatus
+		if err := r.Status().Update(ctx, snapshot); err != nil {
+			return fmt.Errorf("failed to update snapshot CRD status: %v", err)
+		}
+	}
+	return nil
+}
+
+func statusEqual(a, b snapshotv1beta1.SnapshotStatus) bool {
+	return a.SourcePvcName == b.SourcePvcName &&
+		a.SnapshotName == b.SnapshotName &&
+		a.Namespace == b.Namespace &&
+		a.VolumeSnapshotClassName == b.VolumeSnapshotClassName &&
+		a.SnapshotContentName == b.SnapshotContentName &&
+		a.CreationTime == b.CreationTime &&
+		b.CreationTime != "N/A" &&
+		a.ReadyToUse == b.ReadyToUse &&
+		a.RestoreSize == b.RestoreSize &&
+		a.Status == b.Status
 }
 
 // SetupWithManager sets up the controller with the Manager.

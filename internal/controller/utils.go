@@ -340,6 +340,7 @@ func getVolumeSnapShot(dynamicClienSet *dynamic.DynamicClient,
 		if err != nil || !found {
 			fmt.Println("Error accessing metadata creationTimestamp:", err)
 			pvSnapshot.CreationTime = Unknown
+			_, _ = getVolumeSnapShot(dynamicClienSet, resourceNamespace)
 		} else {
 			convertCreationTimeStamp, err := convertToUTCPlus7(creationTimestamp)
 			if err != nil {

@@ -25,41 +25,9 @@ import (
 
 // SnapshotSpec defines the desired state of Snapshot
 type SnapshotSpec struct {
-	SnapshotSchedulerList []SnapshotScheduler `json:"snapshotSchedulerList,omitempty"`
-	Request               Request             `json:"request,omitempty"`
-}
-
-type Create struct {
-	PvcName   string `json:"pvcName,omitempty"`
-	Namespace string `json:"namespace,omitempty"`
-}
-
-type Delete struct {
-	Name      string `json:"name,omitempty"`
-	Namespace string `json:"namespace,omitempty"`
-}
-
-type Request struct {
-	Method       string `json:"method,omitempty"`
 	PvcName      string `json:"pvcName,omitempty"`
 	SnapshotName string `json:"snapshotName,omitempty"`
 	Namespace    string `json:"namespace,omitempty"`
-}
-
-type RequestStatus struct {
-	Method       string `json:"method,omitempty"`
-	PvcName      string `json:"pvcName,omitempty"`
-	SnapshotName string `json:"snapshotName,omitempty"`
-	Namespace    string `json:"namespace,omitempty"`
-	Status       string `json:"status,omitempty"`
-}
-
-type SnapshotScheduler struct {
-	Name            string                  `json:"name,omitempty"`
-	PvcName         string                  `json:"pvcName,omitempty"`
-	Namespace       string                  `json:"namespace,omitempty"`
-	Schedules       []Scheduler             `json:"schedule,omitempty"`
-	RetentionPolicy SnapshotRetentionPolicy `json:"retentionPolicy,omitempty"`
 }
 
 // SnapshotRetentionPolicy defines the policy for retaining snapshots.
@@ -68,27 +36,18 @@ type SnapshotRetentionPolicy struct {
 	MaxDuration string `json:"maxDuration,omitempty"`
 }
 
-const (
-	None string = "None"
-	//StoreMaxSnapshots RetentionPolicyType = "StoreMaxSnapshots"
-	StoreWithinDuration string = "StoreWithinDuration"
-
-	OneHour     string = "OneHour"
-	SevenDays   string = "SevenDays"
-	FifteenDays string = "FifteenDays"
-	OneMonth    string = "OneMonth"
-)
-
-type Scheduler struct {
-	Start    string `json:"start,omitempty"`
-	Location string `json:"location,omitempty"`
-}
-
 // CreateSnapshotStatus defines the observed state of CreateSnapshot
 type SnapshotStatus struct {
-	Conditions            []metav1.Condition  `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
-	SnapshotSchedulerList []SnapshotScheduler `json:"snapshotSchedulerList,omitempty"`
-	RequestStatus         RequestStatus       `json:"requestStatus,omitempty"`
+	Conditions              []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
+	SourcePvcName           string             `json:"pvcName,omitempty"`
+	SnapshotName            string             `json:"snapshotName,omitempty"`
+	Namespace               string             `json:"namespace,omitempty"`
+	Status                  string             `json:"status,omitempty"`
+	VolumeSnapshotClassName string             `json:"volumeSnapshotClassName,omitempty"`
+	SnapshotContentName     string             `json:"snapshotContentName,omitempty"`
+	CreationTime            string             `json:"creationTime,omitempty"`
+	ReadyToUse              bool               `json:"readyToUse,omitempty"`
+	RestoreSize             string             `json:"restoreSize,omitempty"`
 }
 
 //+kubebuilder:object:root=true
