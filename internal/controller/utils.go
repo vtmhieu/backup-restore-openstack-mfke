@@ -499,64 +499,64 @@ func convertTimeNow2String(now time.Time) string {
 	return converted
 }
 
-func createSnapshot(dynamicClientSet *dynamic.DynamicClient, snapshotName string, volumeSnapshotClassName string, pvcName string, namespace string) error {
-	// Define the GroupVersionResource for VolumeSnapshotClass
-	gvr := schema.GroupVersionResource{
-		Group:    "snapshot.storage.k8s.io",
-		Version:  "v1",
-		Resource: VolumeSnapshot,
-	}
+// func createSnapshot(dynamicClientSet *dynamic.DynamicClient, snapshotName string, volumeSnapshotClassName string, pvcName string, namespace string) error {
+// 	// Define the GroupVersionResource for VolumeSnapshotClass
+// 	gvr := schema.GroupVersionResource{
+// 		Group:    "snapshot.storage.k8s.io",
+// 		Version:  "v1",
+// 		Resource: VolumeSnapshot,
+// 	}
 
-	currentTimeString := convertTimeNow2String(time.Now())
+// 	currentTimeString := convertTimeNow2String(time.Now())
 
-	// Create YAML content with user input
-	yamlContent := fmt.Sprintf(`
-apiVersion: snapshot.storage.k8s.io/v1
-kind: VolumeSnapshot
-metadata:
-  name: %s
-spec:
-  volumeSnapshotClassName: %s
-  source:
-    persistentVolumeClaimName: %s
-`, pvcName+currentTimeString, volumeSnapshotClassName, pvcName)
+// 	// Create YAML content with user input
+// 	yamlContent := fmt.Sprintf(`
+// apiVersion: snapshot.storage.k8s.io/v1
+// kind: VolumeSnapshot
+// metadata:
+//   name: %s
+// spec:
+//   volumeSnapshotClassName: %s
+//   source:
+//     persistentVolumeClaimName: %s
+// `, pvcName+currentTimeString, volumeSnapshotClassName, pvcName)
 
-	// Decode the YAML content
-	decoder := yaml.NewYAMLOrJSONDecoder(strings.NewReader(yamlContent), 100)
-	obj := &unstructured.Unstructured{}
-	if err := decoder.Decode(obj); err != nil {
-		fmt.Printf("Error decoding YAML content: %v\n", err)
-		return err
-	}
+// 	// Decode the YAML content
+// 	decoder := yaml.NewYAMLOrJSONDecoder(strings.NewReader(yamlContent), 100)
+// 	obj := &unstructured.Unstructured{}
+// 	if err := decoder.Decode(obj); err != nil {
+// 		fmt.Printf("Error decoding YAML content: %v\n", err)
+// 		return err
+// 	}
 
-	// Apply the resource to the cluster
-	_, err := dynamicClientSet.Resource(gvr).Namespace(namespace).Create(context.TODO(), obj, metav1.CreateOptions{})
-	if err != nil {
-		fmt.Printf("Error creating resource: %v\n", err)
-		return err
-	}
-	return nil
-}
+// 	// Apply the resource to the cluster
+// 	_, err := dynamicClientSet.Resource(gvr).Namespace(namespace).Create(context.TODO(), obj, metav1.CreateOptions{})
+// 	if err != nil {
+// 		fmt.Printf("Error creating resource: %v\n", err)
+// 		return err
+// 	}
+// 	return nil
+// }
 
-func createSnapshotScheduler(dynamicClientSet *dynamic.DynamicClient, name string, pvcName string, namespace string) error {
-	// check if volumeSnapshotClasses existed
-	volumeSnapshotClassesExisted, err := checkVolumeSnapshotClasses(dynamicClientSet)
-	if err != nil {
-		klog.Infof("Cannot get volumeSnapshotClasses crds in shoot cluster")
-	}
-	// not exist -> creat volume snapshot classes
-	if !volumeSnapshotClassesExisted {
-		_, err = createVolumeSnapshotClasses(dynamicClientSet)
-		if err != nil {
-			klog.Infof("The volumeSnapshotClassName already existed")
-		}
-	}
+// func createSnapshotScheduler(dynamicClientSet *dynamic.DynamicClient, name string, pvcName string, namespace string) error {
+// 	// check if volumeSnapshotClasses existed
+// 	volumeSnapshotClassesExisted, err := checkVolumeSnapshotClasses(dynamicClientSet)
+// 	if err != nil {
+// 		klog.Infof("Cannot get volumeSnapshotClasses crds in shoot cluster")
+// 	}
+// 	// not exist -> creat volume snapshot classes
+// 	if !volumeSnapshotClassesExisted {
+// 		_, err = createVolumeSnapshotClasses(dynamicClientSet)
+// 		if err != nil {
+// 			klog.Infof("The volumeSnapshotClassName already existed")
+// 		}
+// 	}
 
-	// create Snapshot base on input
-	err = createSnapshot(dynamicClientSet, name, volumeSnapshotClassName, pvcName, namespace)
+// 	// create Snapshot base on input
+// 	err = createSnapshot(dynamicClientSet, name, volumeSnapshotClassName, pvcName, namespace)
 
-	return err
-}
+// 	return err
+// }
 
 func getPvSnapshotListPerNamespace(dynamicClienSet *dynamic.DynamicClient, namespace string) ([]snapshotv1beta1.PvSnapshotItem, error) {
 	snapshotList := []snapshotv1beta1.PvSnapshotItem{}

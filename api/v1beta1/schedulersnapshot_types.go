@@ -36,6 +36,12 @@ type SnapshotScheduler struct {
 	RetentionPolicy SnapshotRetentionPolicy `json:"retentionPolicy,omitempty"`
 }
 
+// SnapshotRetentionPolicy defines the policy for retaining snapshots.
+type SnapshotRetentionPolicy struct {
+	Type        string `json:"type,omitempty"`
+	MaxDuration string `json:"maxDuration,omitempty"`
+}
+
 const (
 	None                string = "None"
 	StoreWithinDuration string = "StoreWithinDuration"

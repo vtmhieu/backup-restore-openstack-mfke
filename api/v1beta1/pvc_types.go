@@ -17,6 +17,7 @@ limitations under the License.
 package v1beta1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -38,12 +39,16 @@ type PvcStatus struct {
 
 // PvcDetail defines the sum-up information of all PVC in shoot cluster
 type PvcDetail struct {
-	Namespace        string   `json:"namespace,omitempty"`
-	PvcName          string   `json:"pvcName,omitempty"`
-	VolumeName       string   `json:"volumeName,omitempty"`
-	StorageClassName string   `json:"storageClass,omitempty"`
-	Resources        string   `json:"resource,omitempty"`
-	AccessMode       []string `json:"accessMode,omitempty"`
+	PvcName            string                              `json:"pvcName,omitempty"`
+	Resources          string                              `json:"resource,omitempty"`           // resources.requests.storage
+	SourceSnapshotName string                              `json:"sourceSnapshotName,omitempty"` // dataSource.name
+	Namespace          string                              `json:"namespace,omitempty"`
+	VolumeName         string                              `json:"volumeName,omitempty"` // if status Pending -> return nil
+	StorageClassName   string                              `json:"storageClass,omitempty"`
+	AccessMode         []corev1.PersistentVolumeAccessMode `json:"accessMode,omitempty"`
+	VolumeMode         string                              `json:"volumeMode,omitempty"`
+	Status             string                              `json:"status,omitempty"` // Pending, Bounding
+	CreationTime       string                              `json:"creationTime,omitempty"`
 }
 
 //+kubebuilder:object:root=true

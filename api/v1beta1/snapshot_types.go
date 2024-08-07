@@ -30,12 +30,6 @@ type SnapshotSpec struct {
 	Namespace    string `json:"namespace,omitempty"`
 }
 
-// SnapshotRetentionPolicy defines the policy for retaining snapshots.
-type SnapshotRetentionPolicy struct {
-	Type        string `json:"type,omitempty"`
-	MaxDuration string `json:"maxDuration,omitempty"`
-}
-
 // CreateSnapshotStatus defines the observed state of CreateSnapshot
 type SnapshotStatus struct {
 	Conditions              []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`

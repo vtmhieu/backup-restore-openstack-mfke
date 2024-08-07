@@ -174,7 +174,7 @@ func (in *PvcDetail) DeepCopyInto(out *PvcDetail) {
 	*out = *in
 	if in.AccessMode != nil {
 		in, out := &in.AccessMode, &out.AccessMode
-		*out = make([]string, len(*in))
+		*out = make([]corev1.PersistentVolumeAccessMode, len(*in))
 		copy(*out, *in)
 	}
 }
@@ -353,6 +353,11 @@ func (in *RestorePvcStatus) DeepCopyInto(out *RestorePvcStatus) {
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
+	}
+	if in.AccessMode != nil {
+		in, out := &in.AccessMode, &out.AccessMode
+		*out = make([]corev1.PersistentVolumeAccessMode, len(*in))
+		copy(*out, *in)
 	}
 }
 

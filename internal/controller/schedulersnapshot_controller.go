@@ -343,11 +343,13 @@ func (r *SchedulerSnapshotReconciler) ReconcileScheduleSnapshot(ctx context.Cont
 							}
 						}
 					}
-
+					// requeueDurationDefault, in case there is a snapshot that has just been initialized above,
+					// it will be requeued at the time of retention for that snapshot
+					requeueAfterDefault := getDefaultRequeueAfter(item.RetentionPolicy.MaxDuration)
+					requeuAfterList = append(requeuAfterList, requeueAfterDefault)
 				}
 			}
 		}
-		//TODO add requeueDuration default base on
 	}
 	if len(requeuAfterList) != 0 {
 		sort.Slice(requeuAfterList, func(i, j int) bool {
@@ -413,6 +415,23 @@ func newDeleteSnapshot(ctx context.Context, c client.Client, snapshotName string
 	}
 
 	return nil
+}
+
+func getDefaultRequeueAfter(MaxDuration string) time.Duration {
+	var defaultRequeue time.Duration
+	if MaxDuration == OneMinute {
+		defaultRequeue = time.Minute
+	} else if MaxDuration == OneHour {
+		defaultRequeue = time.Hour
+	} else if MaxDuration == SevenDays {
+		defaultRequeue = 7 * 24 * time.Hour
+	} else if MaxDuration == FifteenDays {
+		defaultRequeue = 15 * 24 * time.Hour
+	} else if MaxDuration == OneMonth {
+		defaultRequeue = 30 * 24 * time.Hour
+	}
+
+	return defaultRequeue
 }
 
 // SetupWithManager sets up the controller with the Manager.

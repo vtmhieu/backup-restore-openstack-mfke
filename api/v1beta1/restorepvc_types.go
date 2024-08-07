@@ -39,7 +39,18 @@ type RestorePvcSpec struct {
 type RestorePvcStatus struct {
 	// Define fields for RestorePVC status
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
-	Success    bool               `json:"restoredPvcName,omitempty"`
+	Succeed    bool               `json:"succeed,omitempty"`
+
+	PvcName            string                              `json:"pvcName,omitempty"`
+	Resources          string                              `json:"resource,omitempty"`           // resources.requests.storage
+	SourceSnapshotName string                              `json:"sourceSnapshotName,omitempty"` // dataSource.name
+	Namespace          string                              `json:"namespace,omitempty"`
+	VolumeName         string                              `json:"volumeName,omitempty"` // if status Pending -> return nil
+	StorageClassName   string                              `json:"storageClass,omitempty"`
+	AccessMode         []corev1.PersistentVolumeAccessMode `json:"accessMode,omitempty"`
+	VolumeMode         string                              `json:"volumeMode,omitempty"`
+	Status             string                              `json:"status,omitempty"` // Pending, Bounding
+	CreationTime       string                              `json:"creationTime,omitempty"`
 }
 
 //+kubebuilder:object:root=true

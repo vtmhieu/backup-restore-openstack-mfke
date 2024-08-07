@@ -112,7 +112,7 @@ func (r *RestorePvcReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 					Status: metav1.ConditionFalse, Reason: "Reconciling",
 					Message: fmt.Sprintf("Failed to reconcile for the custom resource (%s): (%s)", restorePvc.Name, err)})
 
-				restorePvc.Status.Success = false
+				restorePvc.Status.Succeed = false
 				if err := r.Status().Update(ctx, restorePvc); err != nil {
 					log.Error(err, "Failed to update restorePvc crds status")
 					return ctrl.Result{}, err
@@ -124,7 +124,7 @@ func (r *RestorePvcReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 				Status: metav1.ConditionTrue, Reason: "Reconciling",
 				Message: fmt.Sprintf("RestorePvc List %s in shoot %s is updated", restorePvc.Name, restorePvc.Namespace)})
 
-			restorePvc.Status.Success = true
+			restorePvc.Status.Succeed = true
 			klog.Infof("Status of restorePvc %v", restorePvc.Status.Conditions)
 			if err := r.Status().Update(ctx, restorePvc); err != nil {
 				log.Error(err, "Failed to update restorePvc crds status")
@@ -175,6 +175,14 @@ func (r *RestorePvcReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 }
 
 func (r *RestorePvcReconciler) ReconcileRestorePvc(ctx context.Context, c client.Client, restorePvc *snapshotv1beta1.RestorePvc) error {
+	//RestorePvcReturn := snapshotv1beta1.PvcDetail{}
+
+	// what if reconcile? -> need to get name from object -> create restore PVC
+	// =>> modify the flow like creating snapshot
+	// Input of restore PVC name == restorePvc.Name
+	// User name the PVC name + anh Kien add currentTimestring or a hexa code to name
+	// or anh Kien autogen the request = restorePvc.Spec.SourcePvcName + "-restore-" + currentTimeString
+
 	// get namespace in seed
 	namespace := restorePvc.Namespace
 	clusterName := namespace[4:]
@@ -199,10 +207,10 @@ func (r *RestorePvcReconciler) ReconcileRestorePvc(ctx context.Context, c client
 		err = r.restorePvc(shootClientSet, restorePvcName, restorePvc.Spec.Namespace, restorePvc.Spec.SnapshotName, restorePvc.Spec.AccessModes, restorePvc.Spec.Storage)
 	}
 	if err != nil {
-		restorePvc.Status.Success = false
+		restorePvc.Status.Succeed = false
 		return fmt.Errorf("unable to restore pvc %s from snapshot %s in shoot %s: %v", restorePvc.Spec.SourcePvcName, restorePvc.Spec.SnapshotName, clusterName, err)
 	}
-	restorePvc.Status.Success = true
+	restorePvc.Status.Succeed = true
 	if restorePvc.Annotations[RestorePVCEnabledAnnotation] == "true" {
 		delete(restorePvc.Annotations, RestorePVCEnabledAnnotation)
 		if err := r.Update(ctx, restorePvc); err != nil {
