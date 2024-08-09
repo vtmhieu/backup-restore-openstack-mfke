@@ -45,6 +45,8 @@ spec:
                 type: string
               snapshotName:
                 type: string
+              snapshotType:
+                type: string
             type: object
           status:
             description: CreateSnapshotStatus defines the observed state of CreateSnapshot
@@ -118,6 +120,8 @@ spec:
                   - type
                   type: object
                 type: array
+              creationStatus:
+                type: string
               creationTime:
                 type: string
               namespace:
@@ -132,7 +136,7 @@ spec:
                 type: string
               snapshotName:
                 type: string
-              status:
+              snapshotType:
                 type: string
               volumeSnapshotClassName:
                 type: string

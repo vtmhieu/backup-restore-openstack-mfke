@@ -239,6 +239,15 @@ func getPVC(shootClientSet *kubernetes.Clientset, namespaceList []string) (snaps
 	return pvcStatus, nil
 }
 
+func getPVCPerNs(shootClientSet *kubernetes.Clientset, sourceNs string) ([]corev1.PersistentVolumeClaim, error) {
+	pvcList, err := shootClientSet.CoreV1().PersistentVolumeClaims(sourceNs).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		klog.Errorf("Unable to get PVC in shoot: %v", err)
+		return nil, err
+	}
+	return pvcList.Items, err
+}
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *PvcReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).

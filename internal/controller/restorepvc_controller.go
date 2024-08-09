@@ -112,7 +112,7 @@ func (r *RestorePvcReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 					Status: metav1.ConditionFalse, Reason: "Reconciling",
 					Message: fmt.Sprintf("Failed to reconcile for the custom resource (%s): (%s)", restorePvc.Name, err)})
 
-				restorePvc.Status.Succeed = false
+				restorePvc.Status.CreationStatus = false
 				if err := r.Status().Update(ctx, restorePvc); err != nil {
 					log.Error(err, "Failed to update restorePvc crds status")
 					return ctrl.Result{}, err
@@ -124,7 +124,7 @@ func (r *RestorePvcReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 				Status: metav1.ConditionTrue, Reason: "Reconciling",
 				Message: fmt.Sprintf("RestorePvc List %s in shoot %s is updated", restorePvc.Name, restorePvc.Namespace)})
 
-			restorePvc.Status.Succeed = true
+			restorePvc.Status.CreationStatus = true
 			klog.Infof("Status of restorePvc %v", restorePvc.Status.Conditions)
 			if err := r.Status().Update(ctx, restorePvc); err != nil {
 				log.Error(err, "Failed to update restorePvc crds status")
@@ -175,18 +175,23 @@ func (r *RestorePvcReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 }
 
 func (r *RestorePvcReconciler) ReconcileRestorePvc(ctx context.Context, c client.Client, restorePvc *snapshotv1beta1.RestorePvc) error {
-	//RestorePvcReturn := snapshotv1beta1.PvcDetail{}
+	RestorePvcReturn := snapshotv1beta1.PvcDetail{}
+
+	// get namespace in seed
+	namespace := restorePvc.Namespace
+	clusterName := namespace[4:]
+	currentTimeString := convertTimeNow2String(time.Now())
+
+	restorePVCName := restorePvc.Spec.SourcePvcName + "-restore-" + currentTimeString
+	if restorePvc.Spec.RestorePvcName != "" {
+		restorePVCName = restorePvc.Spec.RestorePvcName
+	}
 
 	// what if reconcile? -> need to get name from object -> create restore PVC
 	// =>> modify the flow like creating snapshot
 	// Input of restore PVC name == restorePvc.Name
 	// User name the PVC name + anh Kien add currentTimestring or a hexa code to name
 	// or anh Kien autogen the request = restorePvc.Spec.SourcePvcName + "-restore-" + currentTimeString
-
-	// get namespace in seed
-	namespace := restorePvc.Namespace
-	clusterName := namespace[4:]
-	currentTimeString := convertTimeNow2String(time.Now())
 
 	// get kubeconfig
 	shootKubeconfigDataString, err := GetSecretShootKubeconfig(ctx, c, namespace)
@@ -198,19 +203,26 @@ func (r *RestorePvcReconciler) ReconcileRestorePvc(ctx context.Context, c client
 	if err != nil {
 		return fmt.Errorf("unable to create shoot client set %s: %v", clusterName, err)
 	}
-	// define the name for restore pvc
-	restorePvcName := restorePvc.Spec.SourcePvcName + "-restore-" + currentTimeString
-	// restore PVC
-	if restorePvc.Spec.RestorePvcName != "" {
-		err = r.restorePvc(shootClientSet, restorePvc.Spec.RestorePvcName, restorePvc.Spec.Namespace, restorePvc.Spec.SnapshotName, restorePvc.Spec.AccessModes, restorePvc.Spec.Storage)
-	} else {
-		err = r.restorePvc(shootClientSet, restorePvcName, restorePvc.Spec.Namespace, restorePvc.Spec.SnapshotName, restorePvc.Spec.AccessModes, restorePvc.Spec.Storage)
-	}
+
+	// check if restore Pvc existed
+	// get Pvc in destinationNamespace
+	// Check existed, compare SnapshotName, SourceNamespace
+	pvcListReturn, err := getPVCPerNs(shootClientSet, restorePvc.Spec.DesNamespace)
 	if err != nil {
-		restorePvc.Status.Succeed = false
+		klog.Errorf("Unable to get pvcList in namespace %s", restorePvc.Spec.DesNamespace)
+	}
+	for _, pvc := range pvcListReturn {
+		if pvc.Name == restorePVCName {
+
+		}
+	}
+
+	pvcReturn, err := r.restorePvc(shootClientSet, restorePVCName, restorePvc.Spec.SourceNamespace, restorePvc.Spec.DesNamespace, restorePvc.Spec.SnapshotName, restorePvc.Spec.AccessModes, restorePvc.Spec.Storage)
+	if err != nil {
+		restorePvc.Status.CreationStatus = false
 		return fmt.Errorf("unable to restore pvc %s from snapshot %s in shoot %s: %v", restorePvc.Spec.SourcePvcName, restorePvc.Spec.SnapshotName, clusterName, err)
 	}
-	restorePvc.Status.Succeed = true
+	restorePvc.Status.CreationStatus = true
 	if restorePvc.Annotations[RestorePVCEnabledAnnotation] == "true" {
 		delete(restorePvc.Annotations, RestorePVCEnabledAnnotation)
 		if err := r.Update(ctx, restorePvc); err != nil {
@@ -220,19 +232,26 @@ func (r *RestorePvcReconciler) ReconcileRestorePvc(ctx context.Context, c client
 	return nil
 }
 
-func (r *RestorePvcReconciler) restorePvc(shootClientSet *kubernetes.Clientset, restorePvcName string, namespace string, snapshotName string, accessModes []corev1.PersistentVolumeAccessMode, resourceSize string) error {
+func (r *RestorePvcReconciler) restorePvc(shootClientSet *kubernetes.Clientset, restorePvcName string, sourceNamespace string, destinationNamespace string, snapshotName string, accessModes []corev1.PersistentVolumeAccessMode, resourceSize string) (corev1.PersistentVolumeClaim, error) {
 
+	returnPVC := corev1.PersistentVolumeClaim{}
 	// Define the PersistentVolumeClaim
 	pvc := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      restorePvcName,
-			Namespace: namespace,
+			Namespace: destinationNamespace,
 		},
 		Spec: corev1.PersistentVolumeClaimSpec{
 			DataSource: &corev1.TypedLocalObjectReference{
 				Name:     snapshotName,
 				Kind:     "VolumeSnapshot",
 				APIGroup: func() *string { s := "snapshot.storage.k8s.io"; return &s }(),
+			},
+			DataSourceRef: &corev1.TypedObjectReference{
+				Name:      snapshotName,
+				Kind:      "VolumeSnapshot",
+				APIGroup:  func() *string { s := "snapshot.storage.k8s.io"; return &s }(),
+				Namespace: &sourceNamespace,
 			},
 			// AccessModes: []corev1.PersistentVolumeAccessMode{
 			// 	corev1.ReadWriteOnce,
@@ -246,12 +265,12 @@ func (r *RestorePvcReconciler) restorePvc(shootClientSet *kubernetes.Clientset, 
 		},
 	}
 	// Create the PVC
-	_, err := shootClientSet.CoreV1().PersistentVolumeClaims(namespace).Create(context.TODO(), pvc, metav1.CreateOptions{})
+	_, err := shootClientSet.CoreV1().PersistentVolumeClaims(destinationNamespace).Create(context.TODO(), pvc, metav1.CreateOptions{})
 	if err != nil {
 		fmt.Printf("Error creating PVC: %v\n", err)
-		return err
+		return returnPVC, err
 	}
-	return nil
+	return returnPVC, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.

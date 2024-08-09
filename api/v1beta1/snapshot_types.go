@@ -28,6 +28,7 @@ type SnapshotSpec struct {
 	PvcName      string `json:"pvcName,omitempty"`
 	SnapshotName string `json:"snapshotName,omitempty"`
 	Namespace    string `json:"namespace,omitempty"`
+	SnapshotType string `json:"snapshotType,omitempty"`
 }
 
 // CreateSnapshotStatus defines the observed state of CreateSnapshot
@@ -36,12 +37,13 @@ type SnapshotStatus struct {
 	SourcePvcName           string             `json:"pvcName,omitempty"`
 	SnapshotName            string             `json:"snapshotName,omitempty"`
 	Namespace               string             `json:"namespace,omitempty"`
-	Status                  string             `json:"status,omitempty"`
+	CreationStatus          string             `json:"creationStatus,omitempty"`
 	VolumeSnapshotClassName string             `json:"volumeSnapshotClassName,omitempty"`
 	SnapshotContentName     string             `json:"snapshotContentName,omitempty"`
 	CreationTime            string             `json:"creationTime,omitempty"`
 	ReadyToUse              bool               `json:"readyToUse,omitempty"`
 	RestoreSize             string             `json:"restoreSize,omitempty"`
+	SnapshotType            string             `json:"snapshotType,omitempty"`
 }
 
 //+kubebuilder:object:root=true

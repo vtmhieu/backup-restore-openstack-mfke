@@ -27,19 +27,21 @@ import (
 // RestorePvcSpec defines the desired state of RestorePvc
 type RestorePvcSpec struct {
 	// Define fields for RestorePVC spec
-	RestorePvcName string                              `json:"restorePvcName,omitempty"`
-	SourcePvcName  string                              `json:"sourcePvcName,omitempty"`
-	SnapshotName   string                              `json:"snapshotName,omitempty"`
-	Namespace      string                              `json:"namespace,omitempty"`
-	AccessModes    []corev1.PersistentVolumeAccessMode `json:"accessModes,omitempty"`
-	Storage        string                              `json:"storage,omitempty"`
+	RestorePvcName   string                              `json:"restorePvcName,omitempty"`
+	SourcePvcName    string                              `json:"sourcePvcName,omitempty"`
+	SnapshotName     string                              `json:"snapshotName,omitempty"`
+	DesNamespace     string                              `json:"desNamespace,omitempty"`
+	SourceNamespace  string                              `json:"sourceNamespace,omitempty"`
+	AccessModes      []corev1.PersistentVolumeAccessMode `json:"accessModes,omitempty"`
+	Storage          string                              `json:"storage,omitempty"`
+	ConflictHandling string                              `json:"conflictHandling,omitempty"` // FailOnConflict || RollBack
 }
 
 // RestorePvcStatus defines the observed state of RestorePvc
 type RestorePvcStatus struct {
 	// Define fields for RestorePVC status
-	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
-	Succeed    bool               `json:"succeed,omitempty"`
+	Conditions     []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
+	CreationStatus bool               `json:"creationStatus,omitempty"`
 
 	PvcName            string                              `json:"pvcName,omitempty"`
 	Resources          string                              `json:"resource,omitempty"`           // resources.requests.storage
@@ -51,6 +53,7 @@ type RestorePvcStatus struct {
 	VolumeMode         string                              `json:"volumeMode,omitempty"`
 	Status             string                              `json:"status,omitempty"` // Pending, Bounding
 	CreationTime       string                              `json:"creationTime,omitempty"`
+	ConflictHandling   string                              `json:"conflictHandling,omitempty"`
 }
 
 //+kubebuilder:object:root=true

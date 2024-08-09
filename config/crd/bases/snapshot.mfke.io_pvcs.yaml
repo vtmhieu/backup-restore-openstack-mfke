@@ -125,13 +125,21 @@ spec:
                       items:
                         type: string
                       type: array
+                    creationTime:
+                      type: string
                     namespace:
                       type: string
                     pvcName:
                       type: string
                     resource:
                       type: string
+                    sourceSnapshotName:
+                      type: string
+                    status:
+                      type: string
                     storageClass:
+                      type: string
+                    volumeMode:
                       type: string
                     volumeName:
                       type: string

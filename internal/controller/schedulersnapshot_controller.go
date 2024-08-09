@@ -385,12 +385,13 @@ func newCreateSnapshot(ctx context.Context, c client.Client, pvcName string, sho
 
 	snapshot := &snapshotv1beta1.Snapshot{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      pvcName + "-" + currentTimeString,
+			Name:      pvcName + "-" + shootNamespace + "-" + currentTimeString,
 			Namespace: seedNamespace,
 		},
 		Spec: snapshotv1beta1.SnapshotSpec{
-			PvcName:   pvcName,
-			Namespace: shootNamespace,
+			PvcName:      pvcName,
+			Namespace:    shootNamespace,
+			SnapshotType: "Scheduled",
 		},
 	}
 	if err := c.Create(ctx, snapshot); err != nil {

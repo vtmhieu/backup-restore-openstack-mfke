@@ -126,7 +126,8 @@ func (r *CreateSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 				CreationTime:            snapshotReturn.CreationTime,
 				ReadyToUse:              snapshotReturn.ReadyToUse,
 				RestoreSize:             snapshotReturn.RestoreSize,
-				Status:                  "False",
+				CreationStatus:          "False",
+				SnapshotType:            snapshot.Spec.SnapshotType,
 			}
 			if err := r.updateSnapshotStatus(ctx, snapshot, newStatus); err != nil {
 				log.Error(err, "Failed to update snapshot CRD status")
@@ -148,7 +149,8 @@ func (r *CreateSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			CreationTime:            snapshotReturn.CreationTime,
 			ReadyToUse:              snapshotReturn.ReadyToUse,
 			RestoreSize:             snapshotReturn.RestoreSize,
-			Status:                  "True",
+			CreationStatus:          "True",
+			SnapshotType:            snapshot.Spec.SnapshotType,
 		}
 		if err := r.updateSnapshotStatus(ctx, snapshot, newStatus); err != nil {
 			log.Error(err, "Failed to update snapshot CRD status")
@@ -374,7 +376,7 @@ func statusEqual(a, b snapshotv1beta1.SnapshotStatus) bool {
 		b.CreationTime != "N/A" &&
 		a.ReadyToUse == b.ReadyToUse &&
 		a.RestoreSize == b.RestoreSize &&
-		a.Status == b.Status
+		a.CreationStatus == b.CreationStatus
 }
 
 // SetupWithManager sets up the controller with the Manager.
