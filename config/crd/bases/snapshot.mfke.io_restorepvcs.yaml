@@ -47,14 +47,12 @@ spec:
                 type: string
               desNamespace:
                 type: string
-              restorePvcName:
-                description: Define fields for RestorePVC spec
-                type: string
               snapshotName:
+                description: |-
+                  Define fields for RestorePVC spec
+                  RestorePvcName   string                              `json:"restorePvcName,omitempty"`
                 type: string
               sourceNamespace:
-                type: string
-              sourcePvcName:
                 type: string
               storage:
                 type: string
@@ -139,14 +137,17 @@ spec:
               conflictHandling:
                 type: string
               creationStatus:
-                type: boolean
+                type: string
               creationTime:
+                format: date-time
                 type: string
-              namespace:
-                type: string
-              pvcName:
+              desNamespace:
                 type: string
               resource:
+                type: string
+              restorePvcName:
+                type: string
+              sourceNamespace:
                 type: string
               sourceSnapshotName:
                 type: string

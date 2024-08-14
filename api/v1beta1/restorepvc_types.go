@@ -27,8 +27,7 @@ import (
 // RestorePvcSpec defines the desired state of RestorePvc
 type RestorePvcSpec struct {
 	// Define fields for RestorePVC spec
-	RestorePvcName   string                              `json:"restorePvcName,omitempty"`
-	SourcePvcName    string                              `json:"sourcePvcName,omitempty"`
+	//RestorePvcName   string                              `json:"restorePvcName,omitempty"`
 	SnapshotName     string                              `json:"snapshotName,omitempty"`
 	DesNamespace     string                              `json:"desNamespace,omitempty"`
 	SourceNamespace  string                              `json:"sourceNamespace,omitempty"`
@@ -41,18 +40,19 @@ type RestorePvcSpec struct {
 type RestorePvcStatus struct {
 	// Define fields for RestorePVC status
 	Conditions     []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
-	CreationStatus bool               `json:"creationStatus,omitempty"`
+	CreationStatus string             `json:"creationStatus,omitempty"`
 
-	PvcName            string                              `json:"pvcName,omitempty"`
+	RestorePvcName     string                              `json:"restorePvcName,omitempty"`
 	Resources          string                              `json:"resource,omitempty"`           // resources.requests.storage
 	SourceSnapshotName string                              `json:"sourceSnapshotName,omitempty"` // dataSource.name
-	Namespace          string                              `json:"namespace,omitempty"`
+	SourceNamespace    string                              `json:"sourceNamespace,omitempty"`    // namespace of source snapshot
+	DesNamespace       string                              `json:"desNamespace,omitempty"`
 	VolumeName         string                              `json:"volumeName,omitempty"` // if status Pending -> return nil
 	StorageClassName   string                              `json:"storageClass,omitempty"`
 	AccessMode         []corev1.PersistentVolumeAccessMode `json:"accessMode,omitempty"`
 	VolumeMode         string                              `json:"volumeMode,omitempty"`
 	Status             string                              `json:"status,omitempty"` // Pending, Bounding
-	CreationTime       string                              `json:"creationTime,omitempty"`
+	CreationTime       metav1.Time                         `json:"creationTime,omitempty"`
 	ConflictHandling   string                              `json:"conflictHandling,omitempty"`
 }
 

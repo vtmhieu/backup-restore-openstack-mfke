@@ -19,7 +19,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -105,31 +104,50 @@ func (r *RestorePvcReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	// define the finalizer for PVC
 	if restorePvc.ObjectMeta.DeletionTimestamp.IsZero() {
-		if restorePvc.Annotations[RestorePVCEnabledAnnotation] == "true" {
-			if err := r.ReconcileRestorePvc(ctx, r.Client, restorePvc); err != nil {
-				klog.Info("Reconcile restorePvc Failed")
-				meta.SetStatusCondition(&restorePvc.Status.Conditions, metav1.Condition{Type: "Available",
-					Status: metav1.ConditionFalse, Reason: "Reconciling",
-					Message: fmt.Sprintf("Failed to reconcile for the custom resource (%s): (%s)", restorePvc.Name, err)})
-
-				restorePvc.Status.CreationStatus = false
-				if err := r.Status().Update(ctx, restorePvc); err != nil {
-					log.Error(err, "Failed to update restorePvc crds status")
-					return ctrl.Result{}, err
-				}
-				return ctrl.Result{}, err
-			}
-			log.V(1).Info("Reconcile", "RestorePvc list has been successfully updated", req.Namespace)
+		returnRestorePvc, err := r.ReconcileRestorePvc(ctx, r.Client, restorePvc)
+		if err != nil {
+			klog.Info("Reconcile restorePvc Failed")
 			meta.SetStatusCondition(&restorePvc.Status.Conditions, metav1.Condition{Type: "Available",
-				Status: metav1.ConditionTrue, Reason: "Reconciling",
-				Message: fmt.Sprintf("RestorePvc List %s in shoot %s is updated", restorePvc.Name, restorePvc.Namespace)})
+				Status: metav1.ConditionFalse, Reason: "Reconciling",
+				Message: fmt.Sprintf("Failed to reconcile for the custom resource (%s): (%s)", restorePvc.Name, err)})
 
-			restorePvc.Status.CreationStatus = true
-			klog.Infof("Status of restorePvc %v", restorePvc.Status.Conditions)
-			if err := r.Status().Update(ctx, restorePvc); err != nil {
-				log.Error(err, "Failed to update restorePvc crds status")
+			newStatus := snapshotv1beta1.RestorePvcStatus{
+				CreationStatus:     "False",
+				RestorePvcName:     returnRestorePvc.RestorePvcName,
+				Resources:          returnRestorePvc.Resources,
+				SourceSnapshotName: returnRestorePvc.SourceSnapshotName,
+				SourceNamespace:    restorePvc.Spec.SourceNamespace,
+				DesNamespace:       returnRestorePvc.DesNamespace,
+			}
+			if err := r.updateRestoreStatus(ctx, restorePvc, newStatus); err != nil {
+				log.Error(err, "Failed to update snapshot CRD status")
 				return ctrl.Result{}, err
 			}
+			return ctrl.Result{}, err
+		}
+		log.V(1).Info("Reconcile", "RestorePvc list has been successfully updated", req.Namespace)
+		meta.SetStatusCondition(&restorePvc.Status.Conditions, metav1.Condition{Type: "Available",
+			Status: metav1.ConditionTrue, Reason: "Reconciling",
+			Message: fmt.Sprintf("RestorePvc List %s in shoot %s is updated", restorePvc.Name, restorePvc.Namespace)})
+
+		newStatus := snapshotv1beta1.RestorePvcStatus{
+			CreationStatus:     "True",
+			RestorePvcName:     returnRestorePvc.RestorePvcName,
+			Resources:          returnRestorePvc.Resources,
+			SourceSnapshotName: returnRestorePvc.SourceSnapshotName,
+			SourceNamespace:    restorePvc.Spec.SourceNamespace,
+			DesNamespace:       returnRestorePvc.DesNamespace,
+			VolumeName:         returnRestorePvc.VolumeName,
+			StorageClassName:   returnRestorePvc.StorageClassName,
+			AccessMode:         returnRestorePvc.AccessMode,
+			VolumeMode:         returnRestorePvc.VolumeMode,
+			Status:             returnRestorePvc.Status,
+			CreationTime:       returnRestorePvc.CreationTime,
+		}
+		klog.Infof("Status of restorePvc %v", restorePvc.Status.Conditions)
+		if err := r.updateRestoreStatus(ctx, restorePvc, newStatus); err != nil {
+			log.Error(err, "Failed to update snapshot CRD status")
+			return ctrl.Result{}, err
 		}
 		return ctrl.Result{}, nil
 	} else {
@@ -174,67 +192,102 @@ func (r *RestorePvcReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 }
 
-func (r *RestorePvcReconciler) ReconcileRestorePvc(ctx context.Context, c client.Client, restorePvc *snapshotv1beta1.RestorePvc) error {
-	RestorePvcReturn := snapshotv1beta1.PvcDetail{}
+func (r *RestorePvcReconciler) ReconcileRestorePvc(ctx context.Context, c client.Client, restorePvc *snapshotv1beta1.RestorePvc) (snapshotv1beta1.RestorePvcStatus, error) {
+	RestorePvcReturn := snapshotv1beta1.RestorePvcStatus{}
 
 	// get namespace in seed
 	namespace := restorePvc.Namespace
 	clusterName := namespace[4:]
-	currentTimeString := convertTimeNow2String(time.Now())
+	//currentTimeString := convertTimeNow2String(time.Now())
 
-	restorePVCName := restorePvc.Spec.SourcePvcName + "-restore-" + currentTimeString
-	if restorePvc.Spec.RestorePvcName != "" {
-		restorePVCName = restorePvc.Spec.RestorePvcName
-	}
-
-	// what if reconcile? -> need to get name from object -> create restore PVC
-	// =>> modify the flow like creating snapshot
-	// Input of restore PVC name == restorePvc.Name
-	// User name the PVC name + anh Kien add currentTimestring or a hexa code to name
-	// or anh Kien autogen the request = restorePvc.Spec.SourcePvcName + "-restore-" + currentTimeString
+	// set pvc name to restore
+	// if user does not have name for the pvc -> auto gen
+	restorePVCName := restorePvc.Name
 
 	// get kubeconfig
 	shootKubeconfigDataString, err := GetSecretShootKubeconfig(ctx, c, namespace)
 	if err != nil {
-		return fmt.Errorf("unable to get shoot secret data kubeconfig in ns %s: %v", clusterName, err)
+		return RestorePvcReturn, fmt.Errorf("unable to get shoot secret data kubeconfig in ns %s: %v", clusterName, err)
 	}
 	// create shoot client set from this kubeconfig data
 	shootClientSet, err := CreateShootKubeClient(ctx, shootKubeconfigDataString, clusterName)
 	if err != nil {
-		return fmt.Errorf("unable to create shoot client set %s: %v", clusterName, err)
+		return RestorePvcReturn, fmt.Errorf("unable to create shoot client set %s: %v", clusterName, err)
 	}
 
 	// check if restore Pvc existed
 	// get Pvc in destinationNamespace
-	// Check existed, compare SnapshotName, SourceNamespace
+	// Check existed, compare SnapshotName, SourceNamespace -> update
+	// if the name is existed, but snapshot name and sourceNamespace is not match
+	// -> return create fail since the pvc name is used
 	pvcListReturn, err := getPVCPerNs(shootClientSet, restorePvc.Spec.DesNamespace)
 	if err != nil {
 		klog.Errorf("Unable to get pvcList in namespace %s", restorePvc.Spec.DesNamespace)
 	}
 	for _, pvc := range pvcListReturn {
 		if pvc.Name == restorePVCName {
+			if pvc.Spec.DataSource.Name == restorePvc.Spec.SnapshotName {
+				RestorePvcReturn.CreationStatus = "True"
+				RestorePvcReturn.RestorePvcName = pvc.Name
+				RestorePvcReturn.Resources = pvc.Status.Capacity.Storage().String()
+				RestorePvcReturn.SourceSnapshotName = pvc.Spec.DataSourceRef.Name
+				if pvc.Spec.DataSourceRef.Namespace != nil {
+					RestorePvcReturn.SourceNamespace = *pvc.Spec.DataSourceRef.Namespace
+				}
+				RestorePvcReturn.DesNamespace = pvc.Namespace
+				RestorePvcReturn.VolumeName = pvc.Spec.VolumeName
+				if pvc.Spec.StorageClassName != nil {
+					RestorePvcReturn.StorageClassName = *pvc.Spec.StorageClassName
 
+				}
+				RestorePvcReturn.AccessMode = pvc.Spec.AccessModes
+				if pvc.Spec.VolumeMode != nil {
+					RestorePvcReturn.VolumeMode = string(*pvc.Spec.VolumeMode)
+				}
+				RestorePvcReturn.Status = string(pvc.Status.Phase)
+				RestorePvcReturn.CreationTime = pvc.CreationTimestamp
+				return RestorePvcReturn, nil
+			} else {
+				// return the restore PVC name is used in namespace
+				RestorePvcReturn = snapshotv1beta1.RestorePvcStatus{
+					CreationStatus:     "False",
+					RestorePvcName:     restorePVCName,
+					Resources:          restorePvc.Spec.Storage,
+					SourceSnapshotName: restorePvc.Spec.SnapshotName,
+					SourceNamespace:    restorePvc.Spec.SourceNamespace,
+					DesNamespace:       restorePvc.Spec.DesNamespace,
+				}
+				return RestorePvcReturn, fmt.Errorf("the PVC name is used")
+			}
 		}
 	}
 
-	pvcReturn, err := r.restorePvc(shootClientSet, restorePVCName, restorePvc.Spec.SourceNamespace, restorePvc.Spec.DesNamespace, restorePvc.Spec.SnapshotName, restorePvc.Spec.AccessModes, restorePvc.Spec.Storage)
+	RestorePvcReturn, err = r.restorePvc(shootClientSet, restorePVCName, restorePvc.Spec.SourceNamespace, restorePvc.Spec.DesNamespace, restorePvc.Spec.SnapshotName, restorePvc.Spec.AccessModes, restorePvc.Spec.Storage)
 	if err != nil {
-		restorePvc.Status.CreationStatus = false
-		return fmt.Errorf("unable to restore pvc %s from snapshot %s in shoot %s: %v", restorePvc.Spec.SourcePvcName, restorePvc.Spec.SnapshotName, clusterName, err)
+		RestorePvcReturn = snapshotv1beta1.RestorePvcStatus{
+			CreationStatus:     "False",
+			RestorePvcName:     restorePVCName,
+			Resources:          restorePvc.Spec.Storage,
+			SourceSnapshotName: restorePvc.Spec.SnapshotName,
+			SourceNamespace:    restorePvc.Spec.SourceNamespace,
+			DesNamespace:       restorePvc.Spec.DesNamespace,
+		}
+		return RestorePvcReturn, fmt.Errorf("unable to restore pvc %s from snapshot %s in shoot %s: %v", restorePVCName, restorePvc.Spec.SnapshotName, clusterName, err)
 	}
-	restorePvc.Status.CreationStatus = true
+
 	if restorePvc.Annotations[RestorePVCEnabledAnnotation] == "true" {
 		delete(restorePvc.Annotations, RestorePVCEnabledAnnotation)
 		if err := r.Update(ctx, restorePvc); err != nil {
-			return fmt.Errorf("error to delete annotation %s in restorePvc resource: [%v]", RestorePVCEnabledAnnotation, err)
+			return RestorePvcReturn, fmt.Errorf("error to delete annotation %s in restorePvc resource: [%v]", RestorePVCEnabledAnnotation, err)
 		}
 	}
-	return nil
+	return RestorePvcReturn, nil
 }
 
-func (r *RestorePvcReconciler) restorePvc(shootClientSet *kubernetes.Clientset, restorePvcName string, sourceNamespace string, destinationNamespace string, snapshotName string, accessModes []corev1.PersistentVolumeAccessMode, resourceSize string) (corev1.PersistentVolumeClaim, error) {
+// restorePvc function create PVC based on the given information above, return err if not creat successfully
+func (r *RestorePvcReconciler) restorePvc(shootClientSet *kubernetes.Clientset, restorePvcName string, sourceNamespace string, destinationNamespace string, snapshotName string, accessModes []corev1.PersistentVolumeAccessMode, resourceSize string) (snapshotv1beta1.RestorePvcStatus, error) {
 
-	returnPVC := corev1.PersistentVolumeClaim{}
+	returnPvcStatus := snapshotv1beta1.RestorePvcStatus{}
 	// Define the PersistentVolumeClaim
 	pvc := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
@@ -265,12 +318,64 @@ func (r *RestorePvcReconciler) restorePvc(shootClientSet *kubernetes.Clientset, 
 		},
 	}
 	// Create the PVC
-	_, err := shootClientSet.CoreV1().PersistentVolumeClaims(destinationNamespace).Create(context.TODO(), pvc, metav1.CreateOptions{})
+	returnPVC, err := shootClientSet.CoreV1().PersistentVolumeClaims(destinationNamespace).Create(context.TODO(), pvc, metav1.CreateOptions{})
 	if err != nil {
 		fmt.Printf("Error creating PVC: %v\n", err)
-		return returnPVC, err
+		returnPvcStatus = snapshotv1beta1.RestorePvcStatus{
+			CreationStatus:     "False",
+			RestorePvcName:     restorePvcName,
+			Resources:          resourceSize,
+			SourceSnapshotName: snapshotName,
+			SourceNamespace:    sourceNamespace,
+			DesNamespace:       destinationNamespace,
+		}
+		return returnPvcStatus, err
 	}
-	return returnPVC, nil
+
+	returnPvcStatus.CreationStatus = "True"
+	returnPvcStatus.RestorePvcName = returnPVC.Name
+	returnPvcStatus.DesNamespace = returnPVC.Namespace
+	returnPvcStatus.Resources = returnPVC.Status.Capacity.Storage().String()
+	returnPvcStatus.SourceSnapshotName = returnPVC.Spec.DataSourceRef.Name
+	if returnPVC.Spec.DataSourceRef.Namespace != nil {
+		returnPvcStatus.SourceNamespace = *returnPVC.Spec.DataSourceRef.Namespace
+	}
+	returnPvcStatus.VolumeName = returnPVC.Spec.VolumeName
+	if returnPVC.Spec.StorageClassName != nil {
+		returnPvcStatus.StorageClassName = *returnPVC.Spec.StorageClassName
+	}
+	returnPvcStatus.AccessMode = returnPVC.Status.AccessModes
+	if returnPVC.Spec.VolumeMode != nil {
+		returnPvcStatus.VolumeMode = string(*returnPVC.Spec.VolumeMode)
+	}
+	returnPvcStatus.Status = string(returnPVC.Status.Phase)
+	returnPvcStatus.CreationTime = returnPVC.CreationTimestamp
+
+	return returnPvcStatus, nil
+}
+
+func (r *RestorePvcReconciler) updateRestoreStatus(ctx context.Context, snapshot *snapshotv1beta1.RestorePvc, newStatus snapshotv1beta1.RestorePvcStatus) error {
+	if !r.statusEqual(snapshot.Status, newStatus) {
+		snapshot.Status = newStatus
+		if err := r.Status().Update(ctx, snapshot); err != nil {
+			return fmt.Errorf("failed to update snapshot CRD status: %v", err)
+		}
+	}
+	return nil
+}
+
+func (r *RestorePvcReconciler) statusEqual(a, b snapshotv1beta1.RestorePvcStatus) bool {
+	return a.CreationStatus == b.CreationStatus &&
+		a.RestorePvcName == b.RestorePvcName &&
+		a.Resources == b.Resources &&
+		a.SourceSnapshotName == b.SourceSnapshotName &&
+		a.SourceNamespace == b.SourceNamespace &&
+		a.CreationTime == b.CreationTime &&
+		a.DesNamespace == b.DesNamespace &&
+		a.VolumeName == b.VolumeName &&
+		a.StorageClassName == b.StorageClassName &&
+		a.VolumeMode == b.VolumeMode &&
+		a.Status == b.Status
 }
 
 // SetupWithManager sets up the controller with the Manager.

@@ -494,7 +494,7 @@ func convertTimeNow2String(now time.Time) string {
 	nowInBangkok := now.In(location)
 
 	// Format the time to the desired format YY-MM-DD-hh-mm
-	converted := nowInBangkok.Format("06-01-02-15-04") // "06" for YY, "01" for MM, "02" for DD, "15" for hh, "04" for mm
+	converted := nowInBangkok.Format("0601021504") // "06" for YY, "01" for MM, "02" for DD, "15" for hh, "04" for mm
 
 	return converted
 }
