@@ -25,7 +25,9 @@ import (
 
 // SchedulerSnapshotSpec defines the desired state of SchedulerSnapshot
 type SchedulerSnapshotSpec struct {
-	SnapshotSchedulerList []SnapshotScheduler `json:"snapshotSchedulerList,omitempty"`
+	Enabled           bool              `json:"enabled,omitempty"`
+	SnapshotScheduler SnapshotScheduler `json:"snapshotScheduler,omitempty"`
+	// config backup scheduler -> in future
 }
 
 type SnapshotScheduler struct {
@@ -38,8 +40,8 @@ type SnapshotScheduler struct {
 
 // SnapshotRetentionPolicy defines the policy for retaining snapshots.
 type SnapshotRetentionPolicy struct {
-	Type        string `json:"type,omitempty"`
-	MaxDuration string `json:"maxDuration,omitempty"`
+	TimeUnits string `json:"timeUnits,omitempty"` // minutes, hour, day
+	Max       int    `json:"max,omitempty"`
 }
 
 const (
@@ -59,8 +61,8 @@ type Scheduler struct {
 
 // SchedulerSnapshotStatus defines the observed state of SchedulerSnapshot
 type SchedulerSnapshotStatus struct {
-	Conditions            []metav1.Condition  `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
-	SnapshotSchedulerList []SnapshotScheduler `json:"snapshotSchedulerList,omitempty"`
+	Conditions        []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
+	SnapshotScheduler SnapshotScheduler  `json:"snapshotScheduler,omitempty"`
 }
 
 //+kubebuilder:object:root=true

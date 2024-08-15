@@ -228,7 +228,7 @@ func getPVC(shootClientSet *kubernetes.Clientset, namespaceList []string) (snaps
 				pvcDetail.Namespace = item.Namespace
 				pvcDetail.VolumeName = item.Spec.VolumeName
 				pvcDetail.StorageClassName = *item.Spec.StorageClassName
-				pvcDetail.Resources = formatResourceList(item.Spec.Resources.Requests)
+				pvcDetail.Resources = item.Spec.Resources.Requests.Storage().String()
 				pvcDetail.AccessMode = item.Spec.AccessModes
 				pvcStatus.PVCList = append(pvcStatus.PVCList, pvcDetail)
 			}

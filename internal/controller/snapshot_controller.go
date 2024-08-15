@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
+
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -126,7 +127,7 @@ func (r *CreateSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 				CreationTime:            snapshotReturn.CreationTime,
 				ReadyToUse:              snapshotReturn.ReadyToUse,
 				RestoreSize:             snapshotReturn.RestoreSize,
-				CreationStatus:          "False",
+				CreationStatus:          "Failed",
 				SnapshotType:            snapshot.Spec.SnapshotType,
 			}
 			if err := r.updateSnapshotStatus(ctx, snapshot, newStatus); err != nil {
@@ -149,7 +150,7 @@ func (r *CreateSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			CreationTime:            snapshotReturn.CreationTime,
 			ReadyToUse:              snapshotReturn.ReadyToUse,
 			RestoreSize:             snapshotReturn.RestoreSize,
-			CreationStatus:          "True",
+			CreationStatus:          "Succeeded",
 			SnapshotType:            snapshot.Spec.SnapshotType,
 		}
 		if err := r.updateSnapshotStatus(ctx, snapshot, newStatus); err != nil {

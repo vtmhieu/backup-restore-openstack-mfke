@@ -39,35 +39,35 @@ spec:
           spec:
             description: SchedulerSnapshotSpec defines the desired state of SchedulerSnapshot
             properties:
-              snapshotSchedulerList:
-                items:
-                  properties:
-                    name:
-                      type: string
-                    namespace:
-                      type: string
-                    pvcName:
-                      type: string
-                    retentionPolicy:
-                      description: SnapshotRetentionPolicy defines the policy for
-                        retaining snapshots.
+              enabled:
+                type: boolean
+              snapshotScheduler:
+                properties:
+                  name:
+                    type: string
+                  namespace:
+                    type: string
+                  pvcName:
+                    type: string
+                  retentionPolicy:
+                    description: SnapshotRetentionPolicy defines the policy for retaining
+                      snapshots.
+                    properties:
+                      max:
+                        type: integer
+                      timeUnits:
+                        type: string
+                    type: object
+                  schedule:
+                    items:
                       properties:
-                        maxDuration:
+                        location:
                           type: string
-                        type:
+                        start:
                           type: string
                       type: object
-                    schedule:
-                      items:
-                        properties:
-                          location:
-                            type: string
-                          start:
-                            type: string
-                        type: object
-                      type: array
-                  type: object
-                type: array
+                    type: array
+                type: object
             type: object
           status:
             description: SchedulerSnapshotStatus defines the observed state of SchedulerSnapshot
@@ -141,35 +141,33 @@ spec:
                   - type
                   type: object
                 type: array
-              snapshotSchedulerList:
-                items:
-                  properties:
-                    name:
-                      type: string
-                    namespace:
-                      type: string
-                    pvcName:
-                      type: string
-                    retentionPolicy:
-                      description: SnapshotRetentionPolicy defines the policy for
-                        retaining snapshots.
+              snapshotScheduler:
+                properties:
+                  name:
+                    type: string
+                  namespace:
+                    type: string
+                  pvcName:
+                    type: string
+                  retentionPolicy:
+                    description: SnapshotRetentionPolicy defines the policy for retaining
+                      snapshots.
+                    properties:
+                      max:
+                        type: integer
+                      timeUnits:
+                        type: string
+                    type: object
+                  schedule:
+                    items:
                       properties:
-                        maxDuration:
+                        location:
                           type: string
-                        type:
+                        start:
                           type: string
                       type: object
-                    schedule:
-                      items:
-                        properties:
-                          location:
-                            type: string
-                          start:
-                            type: string
-                        type: object
-                      type: array
-                  type: object
-                type: array
+                    type: array
+                type: object
             type: object
         type: object
     served: true

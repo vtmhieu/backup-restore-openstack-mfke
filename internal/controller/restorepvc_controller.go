@@ -112,7 +112,7 @@ func (r *RestorePvcReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 				Message: fmt.Sprintf("Failed to reconcile for the custom resource (%s): (%s)", restorePvc.Name, err)})
 
 			newStatus := snapshotv1beta1.RestorePvcStatus{
-				CreationStatus:     "False",
+				CreationStatus:     "Failed",
 				RestorePvcName:     returnRestorePvc.RestorePvcName,
 				Resources:          returnRestorePvc.Resources,
 				SourceSnapshotName: returnRestorePvc.SourceSnapshotName,
@@ -131,7 +131,7 @@ func (r *RestorePvcReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			Message: fmt.Sprintf("RestorePvc List %s in shoot %s is updated", restorePvc.Name, restorePvc.Namespace)})
 
 		newStatus := snapshotv1beta1.RestorePvcStatus{
-			CreationStatus:     "True",
+			CreationStatus:     "Succeeded",
 			RestorePvcName:     returnRestorePvc.RestorePvcName,
 			Resources:          returnRestorePvc.Resources,
 			SourceSnapshotName: returnRestorePvc.SourceSnapshotName,
@@ -227,7 +227,7 @@ func (r *RestorePvcReconciler) ReconcileRestorePvc(ctx context.Context, c client
 	for _, pvc := range pvcListReturn {
 		if pvc.Name == restorePVCName {
 			if pvc.Spec.DataSource.Name == restorePvc.Spec.SnapshotName {
-				RestorePvcReturn.CreationStatus = "True"
+				RestorePvcReturn.CreationStatus = "Succeeded"
 				RestorePvcReturn.RestorePvcName = pvc.Name
 				RestorePvcReturn.Resources = pvc.Status.Capacity.Storage().String()
 				RestorePvcReturn.SourceSnapshotName = pvc.Spec.DataSourceRef.Name
@@ -250,7 +250,7 @@ func (r *RestorePvcReconciler) ReconcileRestorePvc(ctx context.Context, c client
 			} else {
 				// return the restore PVC name is used in namespace
 				RestorePvcReturn = snapshotv1beta1.RestorePvcStatus{
-					CreationStatus:     "False",
+					CreationStatus:     "Failed",
 					RestorePvcName:     restorePVCName,
 					Resources:          restorePvc.Spec.Storage,
 					SourceSnapshotName: restorePvc.Spec.SnapshotName,
@@ -265,7 +265,7 @@ func (r *RestorePvcReconciler) ReconcileRestorePvc(ctx context.Context, c client
 	RestorePvcReturn, err = r.restorePvc(shootClientSet, restorePVCName, restorePvc.Spec.SourceNamespace, restorePvc.Spec.DesNamespace, restorePvc.Spec.SnapshotName, restorePvc.Spec.AccessModes, restorePvc.Spec.Storage)
 	if err != nil {
 		RestorePvcReturn = snapshotv1beta1.RestorePvcStatus{
-			CreationStatus:     "False",
+			CreationStatus:     "Failed",
 			RestorePvcName:     restorePVCName,
 			Resources:          restorePvc.Spec.Storage,
 			SourceSnapshotName: restorePvc.Spec.SnapshotName,

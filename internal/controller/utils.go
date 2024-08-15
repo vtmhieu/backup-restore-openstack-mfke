@@ -338,7 +338,7 @@ func getVolumeSnapShot(dynamicClienSet *dynamic.DynamicClient,
 		// get creation time
 		creationTimestamp, found, err := unstructured.NestedString(status, "creationTime")
 		if err != nil || !found {
-			fmt.Println("Error accessing metadata creationTimestamp:", err)
+			//fmt.Println("Error accessing metadata creationTimestamp:", err)
 			pvSnapshot.CreationTime = Unknown
 			_, _ = getVolumeSnapShot(dynamicClienSet, resourceNamespace)
 		} else {
@@ -361,7 +361,7 @@ func getVolumeSnapShot(dynamicClienSet *dynamic.DynamicClient,
 		// get restoreSize
 		restoreSize, found, err := unstructured.NestedString(status, "restoreSize")
 		if err != nil || !found {
-			fmt.Println("Error accessing status restoreSize:", err)
+			//fmt.Println("Error accessing status restoreSize:", err)
 			pvSnapshot.RestoreSize = Unknown
 		} else {
 			pvSnapshot.RestoreSize = restoreSize
