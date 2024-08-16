@@ -575,3 +575,42 @@ func getPvSnapshotListPerNamespace(dynamicClienSet *dynamic.DynamicClient, names
 
 	return snapshotList, nil
 }
+
+func getSeedSnapshotList(ctx context.Context, c client.Client) (snapshotv1beta1.SnapshotList, error) {
+	snapshotList := &snapshotv1beta1.SnapshotList{}
+	if err := c.List(ctx, snapshotList); err != nil {
+		klog.Errorf("Error listing Snapshots: %s", err)
+		return *snapshotList, err
+	}
+	return *snapshotList, nil
+}
+
+func getPvSnapshotStatus(dynamicClienSet *dynamic.DynamicClient, namespaceList []string) ([]snapshotv1beta1.SnapshotStatus, error) {
+	pvSnapshotStatus := []snapshotv1beta1.SnapshotStatus{}
+	for _, ns := range namespaceList {
+		//klog.Infof("Checking snapshot in namespace: %s", ns)
+		resp, err := getVolumeSnapShot(dynamicClienSet, ns)
+		if err != nil {
+			fmt.Printf("Unable to get Snapshot List in shoot cluster namespace: %s", ns)
+			continue
+		}
+		if len(resp) != 0 {
+			for _, item := range resp {
+				addSnapshot := snapshotv1beta1.SnapshotStatus{
+					SourcePvcName:           item.SourcePvcName,
+					SnapshotName:            item.SnapshotName,
+					Namespace:               item.Namespace,
+					VolumeSnapshotClassName: item.VolumeSnapshotClassName,
+					SnapshotContentName:     item.SnapshotContentName,
+					CreationTime:            item.CreationTime,
+					ReadyToUse:              item.ReadyToUse,
+					RestoreSize:             item.RestoreSize,
+				}
+				pvSnapshotStatus = append(pvSnapshotStatus, addSnapshot)
+			}
+		} else {
+			klog.Infof("There is no PV Snapshot in ns: %s", ns)
+		}
+	}
+	return pvSnapshotStatus, nil
+}

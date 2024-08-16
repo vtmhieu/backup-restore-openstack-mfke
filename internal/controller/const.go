@@ -1,14 +1,16 @@
 package controller
 
 const (
-	PvcFinalizerName        = "snapshotv1beta1.mfke.io/pvc"
-	PvSnapshotFinalizerName = "snapshotv1beta1.mfke.io/pvsnapshot"
-	RestorePVCFinalizerName = "snapshotv1beta1.mfke.io/restorePvc"
-	SnapshotFinalizerName   = "snapshotv1beta1.mfke.io/snapshot"
+	PvcFinalizerName          = "snapshotv1beta1.mfke.io/pvc"
+	PvSnapshotFinalizerName   = "snapshotv1beta1.mfke.io/pvsnapshot"
+	RestorePVCFinalizerName   = "snapshotv1beta1.mfke.io/restorePvc"
+	SnapshotFinalizerName     = "snapshotv1beta1.mfke.io/snapshot"
+	SyncSnapshotFinalizerName = "snapshotv1beta1.mfke.io/sync"
 
-	PvcReconcileAnnotation        = "snapshotv1beta1.mfke.io/pvc-reconcile"
-	PvSnapshotReconcileAnnotation = "snapshotv1beta1.mfke.io/pvsnapshot-reconcile"
-	SnapshotReconcileAnnotation   = "snapshotv1beta1.mfke.io/snapshot-reconcile"
+	PvcReconcileAnnotation           = "snapshotv1beta1.mfke.io/pvc-reconcile"
+	PvSnapshotReconcileAnnotation    = "snapshotv1beta1.mfke.io/pvsnapshot-reconcile"
+	SnapshotReconcileAnnotation      = "snapshotv1beta1.mfke.io/snapshot-reconcile"
+	SyncSnapshotReconcilerAnnotation = "snapshotv1beta1.mfke.io/syncsnapshot-reconcile"
 
 	CreateSnapshotEnabledAnnotation = "snapshotv1beta1.mfke.io/createSnapshot-enabled"
 	DeleteSnapshotEnabledAnnotation = "snapshotv1beta1.mfke.io/deleteSnapshot-enabled"

@@ -226,27 +226,52 @@ func (r *RestorePvcReconciler) ReconcileRestorePvc(ctx context.Context, c client
 	}
 	for _, pvc := range pvcListReturn {
 		if pvc.Name == restorePVCName {
-			if pvc.Spec.DataSource.Name == restorePvc.Spec.SnapshotName {
-				RestorePvcReturn.CreationStatus = "Succeeded"
-				RestorePvcReturn.RestorePvcName = pvc.Name
-				RestorePvcReturn.Resources = pvc.Status.Capacity.Storage().String()
-				RestorePvcReturn.SourceSnapshotName = pvc.Spec.DataSourceRef.Name
-				if pvc.Spec.DataSourceRef.Namespace != nil {
-					RestorePvcReturn.SourceNamespace = *pvc.Spec.DataSourceRef.Namespace
-				}
-				RestorePvcReturn.DesNamespace = pvc.Namespace
-				RestorePvcReturn.VolumeName = pvc.Spec.VolumeName
-				if pvc.Spec.StorageClassName != nil {
-					RestorePvcReturn.StorageClassName = *pvc.Spec.StorageClassName
+			if pvc.Spec.DataSourceRef != nil {
+				if pvc.Spec.DataSourceRef.Name == restorePvc.Spec.SnapshotName {
+					RestorePvcReturn.CreationStatus = "Succeeded"
+					RestorePvcReturn.RestorePvcName = pvc.Name
+					RestorePvcReturn.Resources = pvc.Status.Capacity.Storage().String()
+					RestorePvcReturn.SourceSnapshotName = pvc.Spec.DataSourceRef.Name
+					if pvc.Spec.DataSourceRef.Namespace != nil {
+						RestorePvcReturn.SourceNamespace = *pvc.Spec.DataSourceRef.Namespace
+					}
+					RestorePvcReturn.DesNamespace = pvc.Namespace
+					RestorePvcReturn.VolumeName = pvc.Spec.VolumeName
+					if pvc.Spec.StorageClassName != nil {
+						RestorePvcReturn.StorageClassName = *pvc.Spec.StorageClassName
 
+					}
+					RestorePvcReturn.AccessMode = pvc.Spec.AccessModes
+					if pvc.Spec.VolumeMode != nil {
+						RestorePvcReturn.VolumeMode = string(*pvc.Spec.VolumeMode)
+					}
+					RestorePvcReturn.Status = string(pvc.Status.Phase)
+					RestorePvcReturn.CreationTime = pvc.CreationTimestamp
+					return RestorePvcReturn, nil
 				}
-				RestorePvcReturn.AccessMode = pvc.Spec.AccessModes
-				if pvc.Spec.VolumeMode != nil {
-					RestorePvcReturn.VolumeMode = string(*pvc.Spec.VolumeMode)
+			} else if pvc.Spec.DataSource != nil {
+				if pvc.Spec.DataSource.Name == restorePvc.Spec.SnapshotName {
+					RestorePvcReturn.CreationStatus = "Succeeded"
+					RestorePvcReturn.RestorePvcName = pvc.Name
+					RestorePvcReturn.Resources = pvc.Status.Capacity.Storage().String()
+					RestorePvcReturn.SourceSnapshotName = pvc.Spec.DataSourceRef.Name
+					if pvc.Spec.DataSourceRef.Namespace != nil {
+						RestorePvcReturn.SourceNamespace = *pvc.Spec.DataSourceRef.Namespace
+					}
+					RestorePvcReturn.DesNamespace = pvc.Namespace
+					RestorePvcReturn.VolumeName = pvc.Spec.VolumeName
+					if pvc.Spec.StorageClassName != nil {
+						RestorePvcReturn.StorageClassName = *pvc.Spec.StorageClassName
+
+					}
+					RestorePvcReturn.AccessMode = pvc.Spec.AccessModes
+					if pvc.Spec.VolumeMode != nil {
+						RestorePvcReturn.VolumeMode = string(*pvc.Spec.VolumeMode)
+					}
+					RestorePvcReturn.Status = string(pvc.Status.Phase)
+					RestorePvcReturn.CreationTime = pvc.CreationTimestamp
+					return RestorePvcReturn, nil
 				}
-				RestorePvcReturn.Status = string(pvc.Status.Phase)
-				RestorePvcReturn.CreationTime = pvc.CreationTimestamp
-				return RestorePvcReturn, nil
 			} else {
 				// return the restore PVC name is used in namespace
 				RestorePvcReturn = snapshotv1beta1.RestorePvcStatus{
@@ -295,11 +320,11 @@ func (r *RestorePvcReconciler) restorePvc(shootClientSet *kubernetes.Clientset, 
 			Namespace: destinationNamespace,
 		},
 		Spec: corev1.PersistentVolumeClaimSpec{
-			DataSource: &corev1.TypedLocalObjectReference{
-				Name:     snapshotName,
-				Kind:     "VolumeSnapshot",
-				APIGroup: func() *string { s := "snapshot.storage.k8s.io"; return &s }(),
-			},
+			// DataSource: &corev1.TypedLocalObjectReference{
+			// 	Name:     snapshotName,
+			// 	Kind:     "VolumeSnapshot",
+			// 	APIGroup: func() *string { s := "snapshot.storage.k8s.io"; return &s }(),
+			// },
 			DataSourceRef: &corev1.TypedObjectReference{
 				Name:      snapshotName,
 				Kind:      "VolumeSnapshot",
@@ -336,9 +361,11 @@ func (r *RestorePvcReconciler) restorePvc(shootClientSet *kubernetes.Clientset, 
 	returnPvcStatus.RestorePvcName = returnPVC.Name
 	returnPvcStatus.DesNamespace = returnPVC.Namespace
 	returnPvcStatus.Resources = returnPVC.Status.Capacity.Storage().String()
-	returnPvcStatus.SourceSnapshotName = returnPVC.Spec.DataSourceRef.Name
-	if returnPVC.Spec.DataSourceRef.Namespace != nil {
-		returnPvcStatus.SourceNamespace = *returnPVC.Spec.DataSourceRef.Namespace
+	returnPvcStatus.SourceSnapshotName = snapshotName
+	if returnPVC.Spec.DataSourceRef != nil {
+		if returnPVC.Spec.DataSourceRef.Namespace != nil {
+			returnPvcStatus.SourceNamespace = *returnPVC.Spec.DataSourceRef.Namespace
+		}
 	}
 	returnPvcStatus.VolumeName = returnPVC.Spec.VolumeName
 	if returnPVC.Spec.StorageClassName != nil {

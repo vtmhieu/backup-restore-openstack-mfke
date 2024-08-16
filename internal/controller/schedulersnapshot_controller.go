@@ -252,7 +252,7 @@ func (r *SchedulerSnapshotReconciler) ReconcileScheduleSnapshot(ctx context.Cont
 
 					if previousTime < time.Second && requeuAfter > 0 {
 						// run snapshot
-						err := newCreateSnapshot(ctx, c, scheduleSnapshot.Spec.SnapshotScheduler.PvcName, scheduleSnapshot.Spec.SnapshotScheduler.Namespace, scheduleSnapshot.Namespace)
+						err := newCreateSnapshot(ctx, c, scheduleSnapshot.Spec.SnapshotScheduler.PvcName, scheduleSnapshot.Spec.SnapshotScheduler.Namespace, scheduleSnapshot.Namespace, "Scheduled")
 						if err != nil {
 							klog.Errorf("unable to create snap shot %s for persistentVolumeName %s in namespace %s: %s", scheduleSnapshot.Spec.SnapshotScheduler.Name, scheduleSnapshot.Spec.SnapshotScheduler.PvcName, scheduleSnapshot.Spec.SnapshotScheduler.Namespace, err)
 						}
@@ -361,7 +361,7 @@ func (r *SchedulerSnapshotReconciler) getSnapshotList(ctx context.Context, c cli
 	return *snapshotList, nil
 }
 
-func newCreateSnapshot(ctx context.Context, c client.Client, pvcName string, shootNamespace string, seedNamespace string) error {
+func newCreateSnapshot(ctx context.Context, c client.Client, pvcName string, shootNamespace string, seedNamespace string, snapshotType string) error {
 	currentTimeString := convertTimeNow2String(time.Now())
 
 	snapshot := &snapshotv1beta1.Snapshot{
@@ -372,7 +372,7 @@ func newCreateSnapshot(ctx context.Context, c client.Client, pvcName string, sho
 		Spec: snapshotv1beta1.SnapshotSpec{
 			PvcName:      pvcName,
 			Namespace:    shootNamespace,
-			SnapshotType: "Scheduled",
+			SnapshotType: snapshotType,
 		},
 	}
 	if err := c.Create(ctx, snapshot); err != nil {
