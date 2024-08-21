@@ -14,7 +14,27 @@ spec:
     singular: restorepvc
   scope: Namespaced
   versions:
-  - name: v1beta1
+  - additionalPrinterColumns:
+    - description: The age of the Scheduler
+      jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    - jsonPath: .status.sourceSnapshotName
+      name: sourceSnapshotName
+      type: string
+    - jsonPath: .status.sourceNamespace
+      name: sourceNamespace
+      type: string
+    - jsonPath: .status.desNamespace
+      name: destinateNamespace
+      type: string
+    - jsonPath: .status.accessMode
+      name: accessMode
+      type: string
+    - jsonPath: .status.status
+      name: status
+      type: string
+    name: v1beta1
     schema:
       openAPIV3Schema:
         description: RestorePvc is the Schema for the restorepvcs API

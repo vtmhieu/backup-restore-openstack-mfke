@@ -109,7 +109,7 @@ func (r *RestorePvcReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			klog.Info("Reconcile restorePvc Failed")
 			meta.SetStatusCondition(&restorePvc.Status.Conditions, metav1.Condition{Type: "Available",
 				Status: metav1.ConditionFalse, Reason: "Reconciling",
-				Message: fmt.Sprintf("Failed to reconcile for the custom resource (%s): (%s)", restorePvc.Name, err)})
+				Message: fmt.Sprintf("Failed to create restore (%s): (%s)", restorePvc.Name, err)})
 
 			newStatus := snapshotv1beta1.RestorePvcStatus{
 				CreationStatus:     "Failed",
@@ -226,43 +226,17 @@ func (r *RestorePvcReconciler) ReconcileRestorePvc(ctx context.Context, c client
 	}
 	for _, pvc := range pvcListReturn {
 		if pvc.Name == restorePVCName {
-			if pvc.Spec.DataSourceRef != nil {
-				if pvc.Spec.DataSourceRef.Name == restorePvc.Spec.SnapshotName {
-					RestorePvcReturn.CreationStatus = "Succeeded"
-					RestorePvcReturn.RestorePvcName = pvc.Name
-					RestorePvcReturn.Resources = pvc.Status.Capacity.Storage().String()
-					RestorePvcReturn.SourceSnapshotName = pvc.Spec.DataSourceRef.Name
-					if pvc.Spec.DataSourceRef.Namespace != nil {
-						RestorePvcReturn.SourceNamespace = *pvc.Spec.DataSourceRef.Namespace
-					}
-					RestorePvcReturn.DesNamespace = pvc.Namespace
-					RestorePvcReturn.VolumeName = pvc.Spec.VolumeName
-					if pvc.Spec.StorageClassName != nil {
-						RestorePvcReturn.StorageClassName = *pvc.Spec.StorageClassName
-
-					}
-					RestorePvcReturn.AccessMode = pvc.Spec.AccessModes
-					if pvc.Spec.VolumeMode != nil {
-						RestorePvcReturn.VolumeMode = string(*pvc.Spec.VolumeMode)
-					}
-					RestorePvcReturn.Status = string(pvc.Status.Phase)
-					RestorePvcReturn.CreationTime = pvc.CreationTimestamp
-					return RestorePvcReturn, nil
-				}
-			} else if pvc.Spec.DataSource != nil {
+			if pvc.Spec.DataSource != nil {
 				if pvc.Spec.DataSource.Name == restorePvc.Spec.SnapshotName {
 					RestorePvcReturn.CreationStatus = "Succeeded"
 					RestorePvcReturn.RestorePvcName = pvc.Name
 					RestorePvcReturn.Resources = pvc.Status.Capacity.Storage().String()
-					RestorePvcReturn.SourceSnapshotName = pvc.Spec.DataSourceRef.Name
-					if pvc.Spec.DataSourceRef.Namespace != nil {
-						RestorePvcReturn.SourceNamespace = *pvc.Spec.DataSourceRef.Namespace
-					}
+					RestorePvcReturn.SourceSnapshotName = pvc.Spec.DataSource.Name
+					RestorePvcReturn.SourceNamespace = pvc.Namespace
 					RestorePvcReturn.DesNamespace = pvc.Namespace
 					RestorePvcReturn.VolumeName = pvc.Spec.VolumeName
 					if pvc.Spec.StorageClassName != nil {
 						RestorePvcReturn.StorageClassName = *pvc.Spec.StorageClassName
-
 					}
 					RestorePvcReturn.AccessMode = pvc.Spec.AccessModes
 					if pvc.Spec.VolumeMode != nil {
@@ -313,35 +287,48 @@ func (r *RestorePvcReconciler) ReconcileRestorePvc(ctx context.Context, c client
 func (r *RestorePvcReconciler) restorePvc(shootClientSet *kubernetes.Clientset, restorePvcName string, sourceNamespace string, destinationNamespace string, snapshotName string, accessModes []corev1.PersistentVolumeAccessMode, resourceSize string) (snapshotv1beta1.RestorePvcStatus, error) {
 
 	returnPvcStatus := snapshotv1beta1.RestorePvcStatus{}
+	pvc := &corev1.PersistentVolumeClaim{}
+
 	// Define the PersistentVolumeClaim
-	pvc := &corev1.PersistentVolumeClaim{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      restorePvcName,
-			Namespace: destinationNamespace,
-		},
-		Spec: corev1.PersistentVolumeClaimSpec{
-			// DataSource: &corev1.TypedLocalObjectReference{
-			// 	Name:     snapshotName,
-			// 	Kind:     "VolumeSnapshot",
-			// 	APIGroup: func() *string { s := "snapshot.storage.k8s.io"; return &s }(),
-			// },
-			DataSourceRef: &corev1.TypedObjectReference{
-				Name:      snapshotName,
-				Kind:      "VolumeSnapshot",
-				APIGroup:  func() *string { s := "snapshot.storage.k8s.io"; return &s }(),
-				Namespace: &sourceNamespace,
+	// 2 case restore in the same namespace & different ns
+	if sourceNamespace == destinationNamespace {
+		pvc = &corev1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      restorePvcName,
+				Namespace: destinationNamespace,
 			},
-			// AccessModes: []corev1.PersistentVolumeAccessMode{
-			// 	corev1.ReadWriteOnce,
-			// },
-			AccessModes: accessModes,
-			Resources: corev1.VolumeResourceRequirements{
-				Requests: corev1.ResourceList{
-					corev1.ResourceStorage: resource.MustParse(resourceSize),
+			Spec: corev1.PersistentVolumeClaimSpec{
+				DataSource: &corev1.TypedLocalObjectReference{
+					Name:     snapshotName,
+					Kind:     "VolumeSnapshot",
+					APIGroup: func() *string { s := "snapshot.storage.k8s.io"; return &s }(),
+				},
+				// DataSourceRef: &corev1.TypedObjectReference{
+				// 	Name:      snapshotName,
+				// 	Kind:      "VolumeSnapshot",
+				// 	APIGroup:  func() *string { s := "snapshot.storage.k8s.io"; return &s }(),
+				// 	Namespace: &sourceNamespace,
+				// },
+				// AccessModes: []corev1.PersistentVolumeAccessMode{
+				// 	corev1.ReadWriteOnce,
+				// },
+				AccessModes: accessModes,
+				Resources: corev1.VolumeResourceRequirements{
+					Requests: corev1.ResourceList{
+						corev1.ResourceStorage: resource.MustParse(resourceSize),
+					},
 				},
 			},
-		},
+		}
+	} else {
+		// create new volumesnapshotcontent from the volumesnapshot
+		// get volumesnapshot from snapshotName + source Namespace -> get SnapshotContentName
+		// -> get volumesnapshotcontent base on snapshotContentName -> get status.snapshotHandle
+		// -> create new volumeSnapshotcontent in DesNamespace from the above snapshotHandle with DataSourceRef.wannabeVolumeSnapshotContentName + DesNamespace
+		// -> create new volumeSnapshot based on this volumesnapshotContent
+		// -> create new restorePvc base on this volumeSnapshot
 	}
+
 	// Create the PVC
 	returnPVC, err := shootClientSet.CoreV1().PersistentVolumeClaims(destinationNamespace).Create(context.TODO(), pvc, metav1.CreateOptions{})
 	if err != nil {

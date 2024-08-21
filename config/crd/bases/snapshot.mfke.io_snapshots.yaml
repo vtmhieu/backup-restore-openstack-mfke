@@ -14,7 +14,33 @@ spec:
     singular: snapshot
   scope: Namespaced
   versions:
-  - name: v1beta1
+  - additionalPrinterColumns:
+    - description: The age of the Scheduler
+      jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    - jsonPath: .status.pvcName
+      name: pvcName
+      type: string
+    - jsonPath: .status.namespace
+      name: namespace
+      type: string
+    - jsonPath: .status.creationStatus
+      name: creationStatus
+      type: string
+    - jsonPath: .status.creationTime
+      name: creationTime
+      type: string
+    - jsonPath: .status.readyToUse
+      name: readyToUse
+      type: boolean
+    - jsonPath: .status.snapshotType
+      name: snapshotType
+      type: string
+    - jsonPath: .status.restoreSize
+      name: restoreSize
+      type: string
+    name: v1beta1
     schema:
       openAPIV3Schema:
         description: Snapshot is the Schema for the snapshots API

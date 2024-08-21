@@ -58,6 +58,12 @@ type RestorePvcStatus struct {
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`,description="The age of the Scheduler"
+// +kubebuilder:printcolumn:name="sourceSnapshotName",type=string,JSONPath=`.status.sourceSnapshotName`
+// +kubebuilder:printcolumn:name="sourceNamespace",type=string,JSONPath=`.status.sourceNamespace`
+// +kubebuilder:printcolumn:name="destinateNamespace",type=string,JSONPath=`.status.desNamespace`
+// +kubebuilder:printcolumn:name="accessMode",type=string,JSONPath=`.status.accessMode`
+// +kubebuilder:printcolumn:name="status",type=string,JSONPath=`.status.status`
 
 // RestorePvc is the Schema for the restorepvcs API
 type RestorePvc struct {

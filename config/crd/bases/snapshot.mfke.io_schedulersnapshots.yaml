@@ -14,7 +14,20 @@ spec:
     singular: schedulersnapshot
   scope: Namespaced
   versions:
-  - name: v1beta1
+  - additionalPrinterColumns:
+    - description: The age of the Scheduler
+      jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    - jsonPath: .status.snapshotScheduler.pvcName
+      name: PvcName
+      type: string
+    - description: The number of checks that passed
+      jsonPath: .status.snapshotScheduler.namespace
+      name: Namespace
+      priority: 1
+      type: string
+    name: v1beta1
     schema:
       openAPIV3Schema:
         description: SchedulerSnapshot is the Schema for the schedulersnapshots API

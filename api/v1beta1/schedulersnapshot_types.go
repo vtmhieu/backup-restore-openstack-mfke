@@ -65,8 +65,11 @@ type SchedulerSnapshotStatus struct {
 	SnapshotScheduler SnapshotScheduler  `json:"snapshotScheduler,omitempty"`
 }
 
-//+kubebuilder:object:root=true
-//+kubebuilder:subresource:status
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`,description="The age of the Scheduler"
+// +kubebuilder:printcolumn:name="PvcName",type=string,JSONPath=`.status.snapshotScheduler.pvcName`
+// +kubebuilder:printcolumn:name="Namespace",type=string,JSONPath=`.status.snapshotScheduler.namespace`,priority=1,description="The number of checks that passed"
 
 // SchedulerSnapshot is the Schema for the schedulersnapshots API
 type SchedulerSnapshot struct {
