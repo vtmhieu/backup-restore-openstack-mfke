@@ -16,6 +16,8 @@ const (
 	DeleteSnapshotEnabledAnnotation = "snapshotv1beta1.mfke.io/deleteSnapshot-enabled"
 	RestorePVCEnabledAnnotation     = "snapshotv1beta1.mfke.io/restorePvc-enabled"
 
+	CreateKubeSnapshotRunCounterAnnotation = "snapshotv1beta1.mfke.io/createKubeSnapshot-runCounter"
+
 	VolumeSnapshotClasses = "volumesnapshotclasses"
 	VolumeSnapshot        = "volumesnapshots"
 	PersistentVolumeClaim = "persistentvolumeclaim"
@@ -27,4 +29,6 @@ const (
 	Minutes = "minutes"
 	Hours   = "hours"
 	Days    = "days"
+
+	LabelRole = "snapshotv1beta1.mfke.io/role"
 )
