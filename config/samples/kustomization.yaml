@@ -6,4 +6,5 @@ resources:
 - snapshot_v1beta1_createsnapshot.yaml
 - snapshot_v1beta1_schedulersnapshot.yaml
 - snapshot_v1beta1_syncsnapshot.yaml
+- snapshot_v1beta1_createkubesnapshot.yaml
 #+kubebuilder:scaffold:manifestskustomizesamples

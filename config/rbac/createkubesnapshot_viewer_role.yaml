@@ -1,0 +1,23 @@
+# permissions for end users to view createkubesnapshots.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: backup-restore-openstack-mfke
+    app.kubernetes.io/managed-by: kustomize
+  name: createkubesnapshot-viewer-role
+rules:
+- apiGroups:
+  - snapshot.mfke.io
+  resources:
+  - createkubesnapshots
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - snapshot.mfke.io
+  resources:
+  - createkubesnapshots/status
+  verbs:
+  - get

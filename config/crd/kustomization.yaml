@@ -8,6 +8,7 @@ resources:
 - bases/snapshot.mfke.io_snapshots.yaml
 - bases/snapshot.mfke.io_schedulersnapshots.yaml
 - bases/snapshot.mfke.io_syncsnapshots.yaml
+- bases/snapshot.mfke.io_createkubesnapshots.yaml
 #+kubebuilder:scaffold:crdkustomizeresource
 
 patches:
@@ -29,6 +30,7 @@ patches:
 #- path: patches/cainjection_in_createsnapshots.yaml
 #- path: patches/cainjection_in_schedulersnapshots.yaml
 #- path: patches/cainjection_in_syncsnapshots.yaml
+#- path: patches/cainjection_in_createkubesnapshots.yaml
 #+kubebuilder:scaffold:crdkustomizecainjectionpatch
 
 # [WEBHOOK] To enable webhook, uncomment the following section

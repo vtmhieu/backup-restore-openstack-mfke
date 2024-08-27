@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -31,31 +32,51 @@ const (
 	nextScheduleDelta = 100 * time.Millisecond
 )
 
-// Get Secret user-kubeconfig in ns seed
-func GetSecretShootKubeconfig(ctx context.Context, c client.Client, ns string) (string, error) {
+// GetSecretShootKubeconfigKey returns the namespaced name of the secret
+// containing the shoot kubeconfig that corresponds to the given seed namespace.
+func GetSecretShootKubeconfigKey(ctx context.Context, c client.Client, ns string) (types.NamespacedName, error) {
+	kubeconfigKey := types.NamespacedName{
+		Namespace: ns,
+	}
+
 	secrets := &corev1.SecretList{}
-	err := c.List(ctx, secrets, client.InNamespace(ns))
+	if err := c.List(ctx, secrets, client.InNamespace(ns)); err != nil {
+		return kubeconfigKey, fmt.Errorf("unable to list secret in ns %s: %v", ns, err)
+	}
+
+	userKubeconfigSecretIx := slices.IndexFunc(secrets.Items, func(secret corev1.Secret) bool {
+		return strings.Contains(secret.Name, "user-kubeconfig")
+	})
+	if userKubeconfigSecretIx == -1 {
+		return kubeconfigKey, fmt.Errorf("secret user-kubeconfig does not exist in ns %s", ns)
+	}
+
+	kubeconfigKey.Name = secrets.Items[userKubeconfigSecretIx].Name
+	return kubeconfigKey, nil
+}
+
+// GetSecretShootKubeconfigObject returns the secret object containing the shoot kubeconfig
+// that corresponds to the given seed namespace.
+func GetSecretShootKubeconfigObject(ctx context.Context, c client.Client, ns string) (*corev1.Secret, error) {
+	key, err := GetSecretShootKubeconfigKey(ctx, c, ns)
 	if err != nil {
-		return "", fmt.Errorf("unable to list secret in ns %s: %v", ns, err)
-	}
-
-	userKubeconfigSecretName := ""
-
-	for _, secret := range secrets.Items {
-		if strings.Contains(secret.Name, "user-kubeconfig") {
-			userKubeconfigSecretName = secret.Name
-		}
-	}
-
-	if userKubeconfigSecretName == "" {
-		return "", fmt.Errorf("secret user-kubeconfig does not exist in ns %s: %v", ns, err)
+		return nil, err
 	}
 
 	secret := &corev1.Secret{}
-	key := types.NamespacedName{Name: userKubeconfigSecretName, Namespace: ns}
-	err = c.Get(ctx, key, secret)
+	if err := c.Get(ctx, key, secret); err != nil {
+		return nil, fmt.Errorf("unable to get secret user-kubeconfig in ns %s: %v", ns, err)
+	}
+
+	return secret, nil
+}
+
+// GetSecretShootKubeconfig returns the raw shoot kubeconfig that corresponds to
+// the given seed namespace.
+func GetSecretShootKubeconfig(ctx context.Context, c client.Client, ns string) (string, error) {
+	secret, err := GetSecretShootKubeconfigObject(ctx, c, ns)
 	if err != nil {
-		return "", fmt.Errorf("unable to get secret user-kubeconfig in ns %s: %v", ns, err)
+		return "", err
 	}
 
 	shootKubeconfigDataString := string(secret.Data["kubeconfig"])
@@ -613,4 +634,18 @@ func getPvSnapshotStatus(dynamicClienSet *dynamic.DynamicClient, namespaceList [
 		}
 	}
 	return pvSnapshotStatus, nil
+}
+
+// envFromConfigMap creates an EnvVar from a ConfigMap key.
+// It reduces boilerplate code.
+func envFromConfigMap(env string, configMapName string, key string) corev1.EnvVar {
+	return corev1.EnvVar{
+		Name: env,
+		ValueFrom: &corev1.EnvVarSource{
+			ConfigMapKeyRef: &corev1.ConfigMapKeySelector{
+				LocalObjectReference: corev1.LocalObjectReference{Name: configMapName},
+				Key:                  key,
+			},
+		},
+	}
 }
