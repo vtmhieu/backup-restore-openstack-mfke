@@ -84,8 +84,12 @@ func (r *PvcReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 		}
 		return ctrl.Result{}, nil
 	}
-	if pvc.Status.Conditions == nil || len(pvc.Status.Conditions) == 0 {
-		meta.SetStatusCondition(&pvc.Status.Conditions, metav1.Condition{Type: "Available", Status: metav1.ConditionUnknown, Reason: "Reconciling", Message: "Starting reconciliation"})
+	if len(pvc.Status.Conditions) == 0 {
+		meta.SetStatusCondition(&pvc.Status.Conditions, metav1.Condition{
+			Type:    "Available",
+			Status:  metav1.ConditionUnknown,
+			Reason:  "Reconciling",
+			Message: "Starting reconciliation"})
 		klog.Infof("Set Status Condition of PVC crd %v", pvc.Status.Conditions)
 		if err := r.Status().Update(ctx, pvc); err != nil {
 			log.Error(err, "Failed to update PVC status condition")

@@ -31,17 +31,21 @@ type SchedulerSnapshotSpec struct {
 }
 
 type SnapshotScheduler struct {
-	Name            string                  `json:"name,omitempty"`
-	PvcName         string                  `json:"pvcName,omitempty"`
-	Namespace       string                  `json:"namespace,omitempty"`
-	Schedules       []Scheduler             `json:"schedule,omitempty"`
-	RetentionPolicy SnapshotRetentionPolicy `json:"retentionPolicy,omitempty"`
+	PvcSnapshotClass    []PvcSnapshotClass              `json:"pvcSnapshotClass,omitempty"`
+	ConfigSnapshotClass CreateKubeSnapshotBackupTargets `json:"configSnapshotClass,omitempty"`
+	Schedules           []Scheduler                     `json:"schedule,omitempty"`
+	RetentionPolicy     SnapshotRetentionPolicy         `json:"retentionPolicy,omitempty"`
 }
 
 // SnapshotRetentionPolicy defines the policy for retaining snapshots.
 type SnapshotRetentionPolicy struct {
 	TimeUnits string `json:"timeUnits,omitempty"` // minutes, hour, day
 	Max       int    `json:"max,omitempty"`
+}
+
+type PvcSnapshotClass struct {
+	PvcName   string `json:"pvcName,omitempty"`
+	Namespace string `json:"namespace,omitempty"`
 }
 
 const (

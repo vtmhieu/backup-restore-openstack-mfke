@@ -88,8 +88,12 @@ func (r *CreateSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		}
 		return ctrl.Result{}, nil
 	}
-	if snapshot.Status.Conditions == nil || len(snapshot.Status.Conditions) == 0 {
-		meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{Type: "Available", Status: metav1.ConditionUnknown, Reason: "Reconciling", Message: "Starting reconciliation"})
+	if len(snapshot.Status.Conditions) == 0 {
+		meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{
+			Type:    "Available",
+			Status:  metav1.ConditionUnknown,
+			Reason:  "Reconciling",
+			Message: "Starting reconciliation"})
 		klog.Infof("Set Status Condition of Snapshot crd %v", snapshot.Status.Conditions)
 		if err := r.Status().Update(ctx, snapshot); err != nil {
 			log.Error(err, "Failed to update Snapshot status condition")

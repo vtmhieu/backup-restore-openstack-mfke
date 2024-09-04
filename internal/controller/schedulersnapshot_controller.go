@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"sort"
 	"time"
 
@@ -84,8 +85,12 @@ func (r *SchedulerSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		}
 		return ctrl.Result{}, nil
 	}
-	if scheduleSnapshot.Status.Conditions == nil || len(scheduleSnapshot.Status.Conditions) == 0 {
-		meta.SetStatusCondition(&scheduleSnapshot.Status.Conditions, metav1.Condition{Type: "Available", Status: metav1.ConditionUnknown, Reason: "Reconciling", Message: "Starting reconciliation"})
+	if len(scheduleSnapshot.Status.Conditions) == 0 {
+		meta.SetStatusCondition(&scheduleSnapshot.Status.Conditions, metav1.Condition{
+			Type:    "Available",
+			Status:  metav1.ConditionUnknown,
+			Reason:  "Reconciling",
+			Message: "Starting reconciliation"})
 		klog.Infof("Set Status Condition of Snapshot crd %v", scheduleSnapshot.Status.Conditions)
 		if err := r.Status().Update(ctx, scheduleSnapshot); err != nil {
 			log.Error(err, "Failed to update Snapshot status condition")
@@ -107,14 +112,13 @@ func (r *SchedulerSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	// define the finalizer for PVC
 	if scheduleSnapshot.ObjectMeta.DeletionTimestamp.IsZero() {
 		// Reconcile snapshot Schedule
-		SnapshotSchedulerListReturn, requeueAfter, err := r.ReconcileScheduleSnapshot(ctx, r.Client, scheduleSnapshot)
+		requeueAfter, err := r.ReconcileScheduleSnapshot(ctx, r.Client, scheduleSnapshot)
 		if err != nil {
 			klog.Info("Reconcile snapshot Failed")
 			//update status
 			meta.SetStatusCondition(&scheduleSnapshot.Status.Conditions, metav1.Condition{Type: "Available",
 				Status: metav1.ConditionFalse, Reason: "Reconciling",
 				Message: fmt.Sprintf("Failed to reconcile for the custom resource (%s): (%s)", scheduleSnapshot.Name, err)})
-			scheduleSnapshot.Status.SnapshotScheduler = SnapshotSchedulerListReturn
 			if err := r.Status().Update(ctx, scheduleSnapshot); err != nil {
 				log.Error(err, "Failed to update snapshot crds status")
 				return ctrl.Result{RequeueAfter: requeueAfter}, err
@@ -124,8 +128,7 @@ func (r *SchedulerSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		meta.SetStatusCondition(&scheduleSnapshot.Status.Conditions, metav1.Condition{Type: "Available",
 			Status: metav1.ConditionTrue, Reason: "Reconciling",
 			Message: fmt.Sprintf("Snapshot schedule %s in shoot %s is reconciled", scheduleSnapshot.Name, scheduleSnapshot.Namespace)})
-		scheduleSnapshot.Status.SnapshotScheduler = SnapshotSchedulerListReturn
-		//snapshot.Status.RequeueAfter = requeueAfter
+
 		if err := r.Status().Update(ctx, scheduleSnapshot); err != nil {
 			log.Error(err, "Failed to update snapshot crds status")
 			return ctrl.Result{RequeueAfter: requeueAfter}, err
@@ -173,10 +176,19 @@ func (r *SchedulerSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	}
 }
 
-func (r *SchedulerSnapshotReconciler) ReconcileScheduleSnapshot(ctx context.Context, c client.Client, scheduleSnapshot *snapshotv1beta1.SchedulerSnapshot) (snapshotv1beta1.SnapshotScheduler, time.Duration, error) {
+// We traverse through each PvcSnapshotClass to check if the pvc exist
+// then we check the validation of cronjob and time to do the snapshot
+// Meanwhile, also do the config snapshot if the ConfigSnapshotClass is set
+
+// In retention phase, get all the snapshot and compare if it is duetime.
+
+func (r *SchedulerSnapshotReconciler) ReconcileScheduleSnapshot(
+	ctx context.Context, c client.Client,
+	scheduleSnapshot *snapshotv1beta1.SchedulerSnapshot) (time.Duration, error) {
+
 	log := log.FromContext(ctx)
 	requeueAfter := 20 * time.Minute
-	snapshotSchedulerList2Update := snapshotv1beta1.SnapshotScheduler{}
+	//snapshotSchedulerList2Update := snapshotv1beta1.SnapshotScheduler{}
 
 	// get namespace in seed
 	namespace := scheduleSnapshot.Namespace
@@ -184,29 +196,24 @@ func (r *SchedulerSnapshotReconciler) ReconcileScheduleSnapshot(ctx context.Cont
 	// get kubeconfig
 	shootKubeconfigDataString, err := GetSecretShootKubeconfig(ctx, c, namespace)
 	if err != nil {
-		return snapshotSchedulerList2Update, requeueAfter, fmt.Errorf("unable to get shoot secret data kubeconfig in ns %s: %v", clusterName, err)
+		return requeueAfter, fmt.Errorf("unable to get shoot secret data kubeconfig in ns %s: %v", clusterName, err)
 	}
 	// create shoot client set from this kubeconfig data
 	shootClientSet, err := CreateShootKubeClient(ctx, shootKubeconfigDataString, clusterName)
 	if err != nil {
-		return snapshotSchedulerList2Update, requeueAfter, fmt.Errorf("unable to create shoot client set %s: %v", clusterName, err)
+		return requeueAfter, fmt.Errorf("unable to create shoot client set %s: %v", clusterName, err)
 	}
-
-	// dynamicClientSet, err := CreateDynamicKubeClient(ctx, shootKubeconfigDataString)
-	// if err != nil {
-	// 	return snapshotSchedulerList2Update, requeueAfter, fmt.Errorf("unable to create dynamic shoot client set %s: %v", clusterName, err)
-	// }
 	// get namespace in shoot
 	namespaceList, err := GetNamespace(shootClientSet)
 	if err != nil {
-		return snapshotSchedulerList2Update, requeueAfter, fmt.Errorf("unable to create shoot client set %s: %v", clusterName, err)
+		return requeueAfter, fmt.Errorf("unable to create shoot client set %s: %v", clusterName, err)
 	}
 	klog.Infof("List of namespace %v", namespaceList)
 
 	// get all PVC existing in shoot
 	pvcList, err := getPVC(shootClientSet, namespaceList)
 	if err != nil {
-		return snapshotSchedulerList2Update, requeueAfter, fmt.Errorf("unable to get pvc list in shoot %s: %v", clusterName, err)
+		return requeueAfter, fmt.Errorf("unable to get pvc list in shoot %s: %v", clusterName, err)
 	}
 	requeuAfterList := []time.Duration{}
 
@@ -215,17 +222,13 @@ func (r *SchedulerSnapshotReconciler) ReconcileScheduleSnapshot(ctx context.Cont
 	// -> run through each SnapshotScheduler
 	if scheduleSnapshot.Spec.Enabled {
 
-		// -> check pvc exist?
-		pvcExisted := false
-		for _, pvc := range pvcList.PVCList {
-			if (scheduleSnapshot.Spec.SnapshotScheduler.PvcName == pvc.PvcName) && (scheduleSnapshot.Spec.SnapshotScheduler.Namespace == pvc.Namespace) {
-				pvcExisted = true
-				break
-			}
-		}
-		// -> check validation of schedule
-		validated := true
-		if len(scheduleSnapshot.Spec.SnapshotScheduler.Schedules) != 0 {
+		// ConfigSnapshot
+		// Validate the cronjob time
+		// Checktime -> create config snapshot
+		// Get Config Snapshot list -> check retention -> delete
+		if scheduleSnapshot.Spec.SnapshotScheduler.ConfigSnapshotClass.IncludeClusterResources || scheduleSnapshot.Spec.SnapshotScheduler.ConfigSnapshotClass.IncludeNamespaces != nil {
+			validated := true
+
 			for i := range scheduleSnapshot.Spec.SnapshotScheduler.Schedules {
 				// check validate and convert to cron.Schedule type
 				parseCron, err := ValidateCronSpec(scheduleSnapshot.Spec.SnapshotScheduler.Schedules[i].Start)
@@ -240,9 +243,8 @@ func (r *SchedulerSnapshotReconciler) ReconcileScheduleSnapshot(ctx context.Cont
 				}
 				requeuAfter := nextSnapshotDuration(parseCron, parseLocation, now)
 				klog.Infof("Time to the next snapshot is: %s", requeuAfter)
-
-				if pvcExisted && validated {
-					snapshotSchedulerList2Update = scheduleSnapshot.Spec.SnapshotScheduler
+				if validated {
+					//snapshotSchedulerList2Update = scheduleSnapshot.Spec.SnapshotScheduler
 					// -> check duration time to request
 					requeuAfter := nextSnapshotDuration(parseCron, parseLocation, now)
 					// -> if it is time -> run request
@@ -252,9 +254,9 @@ func (r *SchedulerSnapshotReconciler) ReconcileScheduleSnapshot(ctx context.Cont
 
 					if previousTime < time.Second && requeuAfter > 0 {
 						// run snapshot
-						err := newCreateSnapshot(ctx, c, scheduleSnapshot.Spec.SnapshotScheduler.PvcName, scheduleSnapshot.Spec.SnapshotScheduler.Namespace, scheduleSnapshot.Namespace, "Scheduled")
+						err := newCreateConfigSnapshot(ctx, c, scheduleSnapshot)
 						if err != nil {
-							klog.Errorf("unable to create snap shot %s for persistentVolumeName %s in namespace %s: %s", scheduleSnapshot.Spec.SnapshotScheduler.Name, scheduleSnapshot.Spec.SnapshotScheduler.PvcName, scheduleSnapshot.Spec.SnapshotScheduler.Namespace, err)
+							klog.Errorf("unable to create config snapshot: %s", err)
 						}
 						// append the next snapshot time
 						requeuAfterList = append(requeuAfterList, requeuAfter)
@@ -265,70 +267,171 @@ func (r *SchedulerSnapshotReconciler) ReconcileScheduleSnapshot(ctx context.Cont
 					}
 				}
 			}
-		}
-		// Check RETENTION -> check RetentionPolicyType -> None skip -> Duration check
-		if scheduleSnapshot.Spec.SnapshotScheduler.RetentionPolicy.TimeUnits != "" {
-			if scheduleSnapshot.Spec.SnapshotScheduler.RetentionPolicy.TimeUnits != "" && scheduleSnapshot.Spec.SnapshotScheduler.RetentionPolicy.Max > 0 {
-				// get snapshot list based on namespace
-				//snapshotListReturn, err := getPvSnapshotListPerNamespace(dynamicClientSet, item.Namespace)
-				snapshotListReturn, err := r.getSnapshotList(ctx, c)
-				if err != nil {
-					klog.Errorf("Unabled to get snapshot list in namespace %s for Retention Reconcilation", scheduleSnapshot.Spec.SnapshotScheduler.Namespace)
-				}
+			// Retention phase
+			if scheduleSnapshot.Spec.SnapshotScheduler.RetentionPolicy.TimeUnits != "" {
+				if scheduleSnapshot.Spec.SnapshotScheduler.RetentionPolicy.Max > 0 {
+					// Get snapshot list based on namespace
+					configSnapshotListReturn, err := r.getConfigSnapshotList(ctx, c)
+					if err != nil {
+						klog.Errorf("Unable to get configSnapshot list for Retention Reconciliation")
+						// Early exit if getting snapshot list fails
+					}
 
-				maxDuration := time.Duration(scheduleSnapshot.Spec.SnapshotScheduler.RetentionPolicy.Max)
+					maxDuration := time.Duration(scheduleSnapshot.Spec.SnapshotScheduler.RetentionPolicy.Max)
+					timeUnits := scheduleSnapshot.Spec.SnapshotScheduler.RetentionPolicy.TimeUnits
+					timeConversion := map[string]time.Duration{
+						"minutes": time.Minute,
+						"hours":   time.Hour,
+						"days":    24 * time.Hour,
+					}
 
-				for _, snapshot := range snapshotListReturn.Items {
-					// check if snapshot has SourcePvcName == Scheduler PvcName
-					if snapshot.Status.SourcePvcName == scheduleSnapshot.Spec.SnapshotScheduler.PvcName {
-						// check from creation time til now + compare to MaxDuration -> delete if needed
-						duration, err := calculateDuration(snapshot.Status.CreationTime)
-						if err != nil {
-							fmt.Println("Error calculating duration:", err)
-							continue
-						}
-						klog.Infof("The duration from creation time of Snapshot %s til now is : %s", snapshot.Status.SnapshotName, duration)
+					unitDuration, exists := timeConversion[timeUnits]
+					if !exists {
+						klog.Errorf("Unsupported TimeUnits: %s", timeUnits)
 
-						if scheduleSnapshot.Spec.SnapshotScheduler.RetentionPolicy.TimeUnits == Minutes {
-							if duration > maxDuration*time.Minute || duration == maxDuration*time.Minute {
-								if err := newDeleteSnapshot(ctx, c, snapshot.Name, snapshot.Namespace, snapshot.Spec.PvcName, snapshot.Spec.Namespace); err != nil {
-									klog.Errorf("Unabled to delete snapshot %s in namespace %s due to exceed Retention", snapshot.Status.SnapshotName, scheduleSnapshot.Spec.SnapshotScheduler.Namespace)
-								} else {
-									klog.Infof("Successfully delete snapshot %s in namespace %s due to Retention", snapshot.Status.SnapshotName, scheduleSnapshot.Spec.SnapshotScheduler.Namespace)
-								}
-							} else {
-								timeleft := maxDuration*time.Minute - duration
-								requeuAfterList = append(requeuAfterList, timeleft)
+					}
+
+					for _, configSnapshot := range configSnapshotListReturn.Items {
+						// compare specification
+						matchBackupTargets := CompareBackupTargets(configSnapshot.Spec.BackupTargets, scheduleSnapshot.Spec.SnapshotScheduler.ConfigSnapshotClass)
+						if matchBackupTargets {
+							// Calculate duration from creation time to now
+							duration, err := calculateDuration(configSnapshot.CreationTimestamp.Format(time.RFC3339))
+							if err != nil {
+								klog.Errorf("Error calculating duration for config snapshot %s: %v", configSnapshot.Name, err)
+								continue
 							}
-						} else if scheduleSnapshot.Spec.SnapshotScheduler.RetentionPolicy.TimeUnits == Hours {
-							if duration > maxDuration*time.Hour || duration == maxDuration*time.Hour {
-								if err := newDeleteSnapshot(ctx, c, snapshot.Name, snapshot.Namespace, snapshot.Spec.PvcName, snapshot.Spec.Namespace); err != nil {
-									klog.Errorf("Unabled to delete snapshot %s in namespace %s due to exceed Retention", snapshot.Status.SnapshotName, scheduleSnapshot.Spec.SnapshotScheduler.Namespace)
+							klog.Infof("The duration from creation time of config snapshot %s to now is: %s", configSnapshot.Name, duration)
+
+							// Compare duration with maxDuration
+							if duration >= maxDuration*unitDuration {
+								if err := newConfigDeleteSnapshot(ctx, c, configSnapshot.Name, configSnapshot.Namespace); err != nil {
+									klog.Errorf("Unable to delete config snapshot %s in namespace %s due to exceed Retention",
+										configSnapshot.Name, configSnapshot.Namespace)
 								} else {
-									klog.Infof("Successfully delete snapshot %s in namespace %s due to Retention", snapshot.Status.SnapshotName, scheduleSnapshot.Spec.SnapshotScheduler.Namespace)
+									klog.Infof("Successfully deleted config snapshot %s in namespace %s due to Retention",
+										configSnapshot.Name, configSnapshot.Namespace)
 								}
 							} else {
-								timeleft := maxDuration*time.Hour - duration
-								requeuAfterList = append(requeuAfterList, timeleft)
-							}
-						} else if scheduleSnapshot.Spec.SnapshotScheduler.RetentionPolicy.TimeUnits == Days {
-							if duration > maxDuration*24*time.Hour || duration == maxDuration*24*time.Hour {
-								if err := newDeleteSnapshot(ctx, c, snapshot.Name, snapshot.Namespace, snapshot.Spec.PvcName, snapshot.Spec.Namespace); err != nil {
-									klog.Errorf("Unabled to delete snapshot %s in namespace %s due to exceed Retention", snapshot.Status.SnapshotName, scheduleSnapshot.Spec.SnapshotScheduler.Namespace)
-								} else {
-									klog.Infof("Successfully delete snapshot %s in namespace %s due to Retention", snapshot.Status.SnapshotName, scheduleSnapshot.Spec.SnapshotScheduler.Namespace)
-								}
-							} else {
-								timeleft := maxDuration*24*time.Hour - duration
-								requeuAfterList = append(requeuAfterList, timeleft)
+								timeLeft := maxDuration*unitDuration - duration
+								requeuAfterList = append(requeuAfterList, timeLeft)
 							}
 						}
 					}
+
+					// Default requeue duration
+					requeueAfterDefault := getDefaultRequeueAfter(maxDuration, timeUnits)
+					requeuAfterList = append(requeuAfterList, requeueAfterDefault)
 				}
-				// requeueDurationDefault, in case there is a snapshot that has just been initialized above,
-				// it will be requeued at the time of retention for that snapshot
-				requeueAfterDefault := getDefaultRequeueAfter(maxDuration, scheduleSnapshot.Spec.SnapshotScheduler.RetentionPolicy.TimeUnits)
-				requeuAfterList = append(requeuAfterList, requeueAfterDefault)
+			}
+		}
+
+		// ==================================
+		// PvcSnapshot
+		for _, pvcSnapshotClass := range scheduleSnapshot.Spec.SnapshotScheduler.PvcSnapshotClass {
+			// -> check pvc exist?
+			pvcExisted := false
+			for _, pvc := range pvcList.PVCList {
+				if (pvcSnapshotClass.PvcName == pvc.PvcName) && (pvcSnapshotClass.Namespace == pvc.Namespace) {
+					pvcExisted = true
+					break
+				}
+			}
+			// -> check validation of schedule
+			validated := true
+			if len(scheduleSnapshot.Spec.SnapshotScheduler.Schedules) != 0 {
+				for i := range scheduleSnapshot.Spec.SnapshotScheduler.Schedules {
+					// check validate and convert to cron.Schedule type
+					parseCron, err := ValidateCronSpec(scheduleSnapshot.Spec.SnapshotScheduler.Schedules[i].Start)
+					if err != nil {
+						log.Error(err, "not a valid cron job")
+						validated = false
+					}
+					parseLocation, err := ValidateScheduleLocation(scheduleSnapshot.Spec.SnapshotScheduler.Schedules[i].Location)
+					if err != nil {
+						log.Error(err, "not a valid location timestamp")
+						validated = false
+					}
+					requeuAfter := nextSnapshotDuration(parseCron, parseLocation, now)
+					klog.Infof("Time to the next snapshot is: %s", requeuAfter)
+
+					if pvcExisted && validated {
+						//snapshotSchedulerList2Update = scheduleSnapshot.Spec.SnapshotScheduler
+						// -> check duration time to request
+						requeuAfter := nextSnapshotDuration(parseCron, parseLocation, now)
+						// -> if it is time -> run request
+						// check condition of the time.Now() in compare to the previous snapshot time
+						previousTime := previousSnapshotDuration(parseCron, parseLocation, now)
+						klog.Infof("Time to the last snapshot is: %s", previousTime)
+
+						if previousTime < time.Second && requeuAfter > 0 {
+							// run snapshot
+							err := newCreateSnapshot(ctx, c, pvcSnapshotClass.PvcName, pvcSnapshotClass.Namespace, scheduleSnapshot.Namespace, "Scheduled")
+							if err != nil {
+								klog.Errorf("unable to create snapshot for persistentVolumeName %s in namespace %s: %s", pvcSnapshotClass.PvcName, pvcSnapshotClass.Namespace, err)
+							}
+							// append the next snapshot time
+							requeuAfterList = append(requeuAfterList, requeuAfter)
+							// append the next retention time
+
+						} else {
+							requeuAfterList = append(requeuAfterList, requeuAfter)
+						}
+					}
+				}
+			}
+			// Check Retention Policy
+			if scheduleSnapshot.Spec.SnapshotScheduler.RetentionPolicy.TimeUnits != "" {
+				if scheduleSnapshot.Spec.SnapshotScheduler.RetentionPolicy.Max > 0 {
+					// Get snapshot list based on namespace
+					snapshotListReturn, err := r.getSnapshotList(ctx, c)
+					if err != nil {
+						klog.Errorf("Unable to get snapshot list in namespace %s for Retention Reconciliation", pvcSnapshotClass.Namespace)
+						continue // Early exit if getting snapshot list fails
+					}
+
+					maxDuration := time.Duration(scheduleSnapshot.Spec.SnapshotScheduler.RetentionPolicy.Max)
+					timeUnits := scheduleSnapshot.Spec.SnapshotScheduler.RetentionPolicy.TimeUnits
+					timeConversion := map[string]time.Duration{
+						"minutes": time.Minute,
+						"hours":   time.Hour,
+						"days":    24 * time.Hour,
+					}
+
+					unitDuration, exists := timeConversion[timeUnits]
+					if !exists {
+						klog.Errorf("Unsupported TimeUnits: %s", timeUnits)
+						continue
+					}
+
+					for _, snapshot := range snapshotListReturn.Items {
+						if snapshot.Status.SourcePvcName == pvcSnapshotClass.PvcName {
+							// Calculate duration from creation time to now
+							duration, err := calculateDuration(snapshot.Status.CreationTime)
+							if err != nil {
+								klog.Errorf("Error calculating duration for snapshot %s: %v", snapshot.Status.SnapshotName, err)
+								continue
+							}
+							klog.Infof("The duration from creation time of Snapshot %s to now is: %s", snapshot.Status.SnapshotName, duration)
+
+							// Compare duration with maxDuration
+							if duration >= maxDuration*unitDuration {
+								if err := newDeleteSnapshot(ctx, c, snapshot.Name, snapshot.Namespace, snapshot.Spec.PvcName, snapshot.Spec.Namespace); err != nil {
+									klog.Errorf("Unable to delete snapshot %s in namespace %s due to exceed Retention", snapshot.Status.SnapshotName, pvcSnapshotClass.Namespace)
+								} else {
+									klog.Infof("Successfully deleted snapshot %s in namespace %s due to Retention", snapshot.Status.SnapshotName, pvcSnapshotClass.Namespace)
+								}
+							} else {
+								timeLeft := maxDuration*unitDuration - duration
+								requeuAfterList = append(requeuAfterList, timeLeft)
+							}
+						}
+					}
+
+					// Default requeue duration
+					requeueAfterDefault := getDefaultRequeueAfter(maxDuration, timeUnits)
+					requeuAfterList = append(requeuAfterList, requeueAfterDefault)
+				}
 			}
 		}
 	}
@@ -346,10 +449,10 @@ func (r *SchedulerSnapshotReconciler) ReconcileScheduleSnapshot(ctx context.Cont
 	if scheduleSnapshot.Annotations[SnapshotReconcileAnnotation] == "true" {
 		delete(scheduleSnapshot.Annotations, SnapshotReconcileAnnotation)
 		if err := r.Update(ctx, scheduleSnapshot); err != nil {
-			return snapshotSchedulerList2Update, requeueAfter, fmt.Errorf("error to delete annotation %s in createSnapshot resource: [%v]", DeleteSnapshotEnabledAnnotation, err)
+			return requeueAfter, fmt.Errorf("error to delete annotation %s in createSnapshot resource: [%v]", DeleteSnapshotEnabledAnnotation, err)
 		}
 	}
-	return snapshotSchedulerList2Update, requeueAfter, nil
+	return requeueAfter, nil
 }
 
 func (r *SchedulerSnapshotReconciler) getSnapshotList(ctx context.Context, c client.Client) (snapshotv1beta1.SnapshotList, error) {
@@ -359,6 +462,15 @@ func (r *SchedulerSnapshotReconciler) getSnapshotList(ctx context.Context, c cli
 		return *snapshotList, err
 	}
 	return *snapshotList, nil
+}
+
+func (r *SchedulerSnapshotReconciler) getConfigSnapshotList(ctx context.Context, c client.Client) (snapshotv1beta1.CreateKubeSnapshotList, error) {
+	configSnapshotList := &snapshotv1beta1.CreateKubeSnapshotList{}
+	if err := c.List(ctx, configSnapshotList); err != nil {
+		klog.Errorf("Error listing Snapshots: %s", err)
+		return *configSnapshotList, err
+	}
+	return *configSnapshotList, nil
 }
 
 func newCreateSnapshot(ctx context.Context, c client.Client, pvcName string, shootNamespace string, seedNamespace string, snapshotType string) error {
@@ -376,6 +488,27 @@ func newCreateSnapshot(ctx context.Context, c client.Client, pvcName string, sho
 		},
 	}
 	if err := c.Create(ctx, snapshot); err != nil {
+		return err
+	}
+	return nil
+}
+
+func newCreateConfigSnapshot(ctx context.Context, c client.Client, scheduleSnapshot *snapshotv1beta1.SchedulerSnapshot) error {
+	currentTimeString := convertTimeNow2String(time.Now())
+	configSnapshot := &snapshotv1beta1.CreateKubeSnapshot{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "fke-configsnapshot-" + currentTimeString,
+			Namespace: scheduleSnapshot.Namespace, // seedNamespace
+		},
+		Spec: snapshotv1beta1.CreateKubeSnapshotSpec{
+			BackupTargets: snapshotv1beta1.CreateKubeSnapshotBackupTargets{
+				IncludeNamespaces:       scheduleSnapshot.Spec.SnapshotScheduler.ConfigSnapshotClass.IncludeNamespaces,
+				IncludeClusterResources: scheduleSnapshot.Spec.SnapshotScheduler.ConfigSnapshotClass.IncludeClusterResources,
+			},
+			RunCounter: 1,
+		},
+	}
+	if err := c.Create(ctx, configSnapshot); err != nil {
 		return err
 	}
 	return nil
@@ -399,6 +532,20 @@ func newDeleteSnapshot(ctx context.Context, c client.Client, snapshotName string
 	return nil
 }
 
+func newConfigDeleteSnapshot(ctx context.Context, c client.Client, snapshotName string, seedNamespace string) error {
+	configSnapshot := &snapshotv1beta1.CreateKubeSnapshot{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      snapshotName,
+			Namespace: seedNamespace,
+		},
+	}
+	if err := c.Delete(ctx, configSnapshot); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func getDefaultRequeueAfter(maxDuration time.Duration, timeUnits string) time.Duration {
 	var defaultRequeue time.Duration
 	if timeUnits == Minutes {
@@ -409,6 +556,26 @@ func getDefaultRequeueAfter(maxDuration time.Duration, timeUnits string) time.Du
 		defaultRequeue = maxDuration * 24 * time.Hour
 	}
 	return defaultRequeue
+}
+
+// It returns true if they are equal and false otherwise.
+func CompareBackupTargets(bt1, bt2 snapshotv1beta1.CreateKubeSnapshotBackupTargets) bool {
+	// Compare IncludeClusterResources field
+	if bt1.IncludeClusterResources != bt2.IncludeClusterResources {
+		return false
+	}
+
+	// Compare IncludeNamespaces field (order doesn't matter)
+	if len(bt1.IncludeNamespaces) != len(bt2.IncludeNamespaces) {
+		return false
+	}
+
+	// Sort slices to ensure order-independent comparison
+	sort.Strings(bt1.IncludeNamespaces)
+	sort.Strings(bt2.IncludeNamespaces)
+
+	// Compare the sorted IncludeNamespaces slices
+	return reflect.DeepEqual(bt1.IncludeNamespaces, bt2.IncludeNamespaces)
 }
 
 // SetupWithManager sets up the controller with the Manager.

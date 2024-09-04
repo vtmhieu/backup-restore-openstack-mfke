@@ -82,8 +82,12 @@ func (r *PvSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		}
 		return ctrl.Result{}, nil
 	}
-	if pvSnapshot.Status.Conditions == nil || len(pvSnapshot.Status.Conditions) == 0 {
-		meta.SetStatusCondition(&pvSnapshot.Status.Conditions, metav1.Condition{Type: "Available", Status: metav1.ConditionUnknown, Reason: "Reconciling", Message: "Starting reconciliation"})
+	if len(pvSnapshot.Status.Conditions) == 0 {
+		meta.SetStatusCondition(&pvSnapshot.Status.Conditions, metav1.Condition{
+			Type:    "Available",
+			Status:  metav1.ConditionUnknown,
+			Reason:  "Reconciling",
+			Message: "Starting reconciliation"})
 		klog.Infof("Set Status Condition of PVC crd %v", pvSnapshot.Status.Conditions)
 		if err := r.Status().Update(ctx, pvSnapshot); err != nil {
 			log.Error(err, "Failed to update PVC status condition")

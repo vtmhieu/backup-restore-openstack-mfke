@@ -56,12 +56,31 @@ spec:
                 type: boolean
               snapshotScheduler:
                 properties:
-                  name:
-                    type: string
-                  namespace:
-                    type: string
-                  pvcName:
-                    type: string
+                  configSnapshotClass:
+                    properties:
+                      includeClusterResources:
+                        description: |-
+                          IncludeClusterResources, if true, will include cluster-wide resources in
+                          the snapshot. Otherwise, only namespace-scoped resources will be included.
+                        type: boolean
+                      includeNamespaces:
+                        description: |-
+                          IncludeNamespaces is the list of namespaces to include in the snapshot.
+                          If nil, all namespaces will be included. If empty, no namespaces will be
+                          included.
+                        items:
+                          type: string
+                        type: array
+                    type: object
+                  pvcSnapshotClass:
+                    items:
+                      properties:
+                        namespace:
+                          type: string
+                        pvcName:
+                          type: string
+                      type: object
+                    type: array
                   retentionPolicy:
                     description: SnapshotRetentionPolicy defines the policy for retaining
                       snapshots.
@@ -156,12 +175,31 @@ spec:
                 type: array
               snapshotScheduler:
                 properties:
-                  name:
-                    type: string
-                  namespace:
-                    type: string
-                  pvcName:
-                    type: string
+                  configSnapshotClass:
+                    properties:
+                      includeClusterResources:
+                        description: |-
+                          IncludeClusterResources, if true, will include cluster-wide resources in
+                          the snapshot. Otherwise, only namespace-scoped resources will be included.
+                        type: boolean
+                      includeNamespaces:
+                        description: |-
+                          IncludeNamespaces is the list of namespaces to include in the snapshot.
+                          If nil, all namespaces will be included. If empty, no namespaces will be
+                          included.
+                        items:
+                          type: string
+                        type: array
+                    type: object
+                  pvcSnapshotClass:
+                    items:
+                      properties:
+                        namespace:
+                          type: string
+                        pvcName:
+                          type: string
+                      type: object
+                    type: array
                   retentionPolicy:
                     description: SnapshotRetentionPolicy defines the policy for retaining
                       snapshots.
