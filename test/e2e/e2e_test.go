@@ -24,7 +24,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/vtmhieu/backup-restore-openstack-mfke.git/test/utils"
+	"gitlab.fci.vn/xplat/fke/backup-restore-openstack-mfke.git/test/utils"
 )
 
 const namespace = "backup-restore-openstack-mfke-system"

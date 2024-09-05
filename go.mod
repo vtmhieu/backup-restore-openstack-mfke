@@ -1,4 +1,4 @@
-module github.com/vtmhieu/backup-restore-openstack-mfke.git
+module gitlab.fci.vn/xplat/fke/backup-restore-openstack-mfke.git
 
 go 1.22.4
 

@@ -34,8 +34,8 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	snapshotv1beta1 "github.com/vtmhieu/backup-restore-openstack-mfke.git/api/v1beta1"
-	"github.com/vtmhieu/backup-restore-openstack-mfke.git/internal/controller"
+	snapshotv1beta1 "gitlab.fci.vn/xplat/fke/backup-restore-openstack-mfke.git/api/v1beta1"
+	"gitlab.fci.vn/xplat/fke/backup-restore-openstack-mfke.git/internal/controller"
 	//+kubebuilder:scaffold:imports
 )
 
