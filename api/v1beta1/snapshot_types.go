@@ -50,7 +50,7 @@ type SnapshotStatus struct {
 //+kubebuilder:subresource:status
 //+kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`,description="The age of the Scheduler"
 // +kubebuilder:printcolumn:name="pvcName",type=string,JSONPath=`.status.pvcName`
-// +kubebuilder:printcolumn:name="namespace",type=string,JSONPath=`.status.namespace`
+// +kubebuilder:printcolumn:name="shootNamespace",type=string,JSONPath=`.status.namespace`
 // +kubebuilder:printcolumn:name="creationStatus",type=string,JSONPath=`.status.creationStatus`
 // +kubebuilder:printcolumn:name="creationTime",type=string,JSONPath=`.status.creationTime`
 // +kubebuilder:printcolumn:name="readyToUse",type=boolean,JSONPath=`.status.readyToUse`

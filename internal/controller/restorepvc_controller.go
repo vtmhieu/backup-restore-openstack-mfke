@@ -70,6 +70,7 @@ func (r *RestorePvcReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		}
 		return ctrl.Result{}, fmt.Errorf("error retrieving object from store: %w", err)
 	}
+
 	if !controllerutil.ContainsFinalizer(restorePvc, RestorePVCFinalizerName) {
 		controllerutil.AddFinalizer(restorePvc, RestorePVCFinalizerName)
 		if err := r.Update(ctx, restorePvc); err != nil {
@@ -82,6 +83,7 @@ func (r *RestorePvcReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		}
 		return ctrl.Result{}, nil
 	}
+
 	if len(restorePvc.Status.Conditions) == 0 {
 		meta.SetStatusCondition(&restorePvc.Status.Conditions, metav1.Condition{
 			Type:    "Available",
@@ -111,49 +113,12 @@ func (r *RestorePvcReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		returnRestorePvc, err := r.ReconcileRestorePvc(ctx, r.Client, restorePvc)
 		if err != nil {
 			klog.Info("Reconcile restorePvc Failed")
-			meta.SetStatusCondition(&restorePvc.Status.Conditions, metav1.Condition{Type: "Available",
-				Status: metav1.ConditionFalse, Reason: "Reconciling",
-				Message: fmt.Sprintf("Failed to create restore (%s): (%s)", restorePvc.Name, err)})
-
-			newStatus := snapshotv1beta1.RestorePvcStatus{
-				CreationStatus:     "Failed",
-				RestorePvcName:     returnRestorePvc.RestorePvcName,
-				Resources:          returnRestorePvc.Resources,
-				SourceSnapshotName: returnRestorePvc.SourceSnapshotName,
-				SourceNamespace:    restorePvc.Spec.SourceNamespace,
-				DesNamespace:       returnRestorePvc.DesNamespace,
-			}
-			if err := r.updateRestoreStatus(ctx, restorePvc, newStatus); err != nil {
-				log.Error(err, "Failed to update snapshot CRD status")
-				return ctrl.Result{}, err
-			}
-			return ctrl.Result{}, err
+			return r.handleRestorePvcError(ctx, restorePvc, returnRestorePvc, err)
 		}
+
 		log.V(1).Info("Reconcile", "RestorePvc list has been successfully updated", req.Namespace)
-		meta.SetStatusCondition(&restorePvc.Status.Conditions, metav1.Condition{Type: "Available",
-			Status: metav1.ConditionTrue, Reason: "Reconciling",
-			Message: fmt.Sprintf("RestorePvc List %s in shoot %s is updated", restorePvc.Name, restorePvc.Namespace)})
+		return r.handleRestorePvcSuccess(ctx, restorePvc, returnRestorePvc)
 
-		newStatus := snapshotv1beta1.RestorePvcStatus{
-			CreationStatus:     "Succeeded",
-			RestorePvcName:     returnRestorePvc.RestorePvcName,
-			Resources:          returnRestorePvc.Resources,
-			SourceSnapshotName: returnRestorePvc.SourceSnapshotName,
-			SourceNamespace:    restorePvc.Spec.SourceNamespace,
-			DesNamespace:       returnRestorePvc.DesNamespace,
-			VolumeName:         returnRestorePvc.VolumeName,
-			StorageClassName:   returnRestorePvc.StorageClassName,
-			AccessMode:         returnRestorePvc.AccessMode,
-			VolumeMode:         returnRestorePvc.VolumeMode,
-			Status:             returnRestorePvc.Status,
-			CreationTime:       returnRestorePvc.CreationTime,
-		}
-		klog.Infof("Status of restorePvc %v", restorePvc.Status.Conditions)
-		if err := r.updateRestoreStatus(ctx, restorePvc, newStatus); err != nil {
-			log.Error(err, "Failed to update snapshot CRD status")
-			return ctrl.Result{}, err
-		}
-		return ctrl.Result{}, nil
 	} else {
 		meta.SetStatusCondition(&restorePvc.Status.Conditions, metav1.Condition{Type: "Degraded",
 			Status: metav1.ConditionUnknown, Reason: "Finalizing",
@@ -394,6 +359,69 @@ func (r *RestorePvcReconciler) statusEqual(a, b snapshotv1beta1.RestorePvcStatus
 		a.StorageClassName == b.StorageClassName &&
 		a.VolumeMode == b.VolumeMode &&
 		a.Status == b.Status
+}
+
+func (r *RestorePvcReconciler) handleRestorePvcError(ctx context.Context, restorePvc *snapshotv1beta1.RestorePvc, returnRestorePvc snapshotv1beta1.RestorePvcStatus, err error) (ctrl.Result, error) {
+	newStatus := r.buildRestorePvcStatus(restorePvc, returnRestorePvc, "Failed")
+	if err := r.updateRestoreStatus(ctx, restorePvc, newStatus); err != nil {
+		klog.Error(err, "Failed to update restorePvc CRD status")
+		return ctrl.Result{}, err
+	}
+
+	meta.SetStatusCondition(&restorePvc.Status.Conditions, metav1.Condition{
+		Type:    "Available",
+		Status:  metav1.ConditionFalse,
+		Reason:  "Reconciling",
+		Message: fmt.Sprintf("Failed to create restore (%s): (%s)", restorePvc.Name, err.Error()),
+	})
+
+	if err := r.Status().Update(ctx, restorePvc); err != nil {
+		klog.Error(err, "Failed to update restorePvc status condition")
+		return ctrl.Result{}, err
+	}
+
+	return ctrl.Result{}, err
+}
+
+func (r *RestorePvcReconciler) handleRestorePvcSuccess(ctx context.Context, restorePvc *snapshotv1beta1.RestorePvc, returnRestorePvc snapshotv1beta1.RestorePvcStatus) (ctrl.Result, error) {
+	newStatus := r.buildRestorePvcStatus(restorePvc, returnRestorePvc, "Succeeded")
+	klog.Infof("Status of restorePvc %v", restorePvc.Status.Conditions)
+
+	if err := r.updateRestoreStatus(ctx, restorePvc, newStatus); err != nil {
+		klog.Error(err, "Failed to update restorePvc CRD status")
+		return ctrl.Result{}, err
+	}
+
+	meta.SetStatusCondition(&restorePvc.Status.Conditions, metav1.Condition{
+		Type:    "Available",
+		Status:  metav1.ConditionTrue,
+		Reason:  "Reconciling",
+		Message: fmt.Sprintf("RestorePvc %s in shoot %s is updated", restorePvc.Name, restorePvc.Namespace),
+	})
+
+	if err := r.Status().Update(ctx, restorePvc); err != nil {
+		klog.Error(err, "Failed to update restorePvc status condition")
+		return ctrl.Result{}, err
+	}
+
+	return ctrl.Result{}, nil
+}
+
+func (r *RestorePvcReconciler) buildRestorePvcStatus(restorePvc *snapshotv1beta1.RestorePvc, returnRestorePvc snapshotv1beta1.RestorePvcStatus, creationStatus string) snapshotv1beta1.RestorePvcStatus {
+	return snapshotv1beta1.RestorePvcStatus{
+		CreationStatus:     creationStatus,
+		RestorePvcName:     returnRestorePvc.RestorePvcName,
+		Resources:          returnRestorePvc.Resources,
+		SourceSnapshotName: returnRestorePvc.SourceSnapshotName,
+		SourceNamespace:    restorePvc.Spec.SourceNamespace,
+		DesNamespace:       returnRestorePvc.DesNamespace,
+		VolumeName:         returnRestorePvc.VolumeName,
+		StorageClassName:   returnRestorePvc.StorageClassName,
+		AccessMode:         returnRestorePvc.AccessMode,
+		VolumeMode:         returnRestorePvc.VolumeMode,
+		Status:             returnRestorePvc.Status,
+		CreationTime:       returnRestorePvc.CreationTime,
+	}
 }
 
 // SetupWithManager sets up the controller with the Manager.

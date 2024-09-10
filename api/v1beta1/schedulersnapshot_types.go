@@ -65,8 +65,7 @@ type Scheduler struct {
 
 // SchedulerSnapshotStatus defines the observed state of SchedulerSnapshot
 type SchedulerSnapshotStatus struct {
-	Conditions        []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
-	SnapshotScheduler SnapshotScheduler  `json:"snapshotScheduler,omitempty"`
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
 }
 
 // +kubebuilder:object:root=true

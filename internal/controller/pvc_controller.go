@@ -219,7 +219,6 @@ func (r *PvcReconciler) ReconcilePvc(ctx context.Context, c client.Client, pvc *
 func getPVC(shootClientSet *kubernetes.Clientset, namespaceList []string) (snapshotv1beta1.PvcStatus, error) {
 	pvcStatus := snapshotv1beta1.PvcStatus{}
 	for _, ns := range namespaceList {
-		//klog.Infof("Checking namespace: %s", ns)
 		pvcReturn, err := shootClientSet.CoreV1().PersistentVolumeClaims(ns).List(context.TODO(), metav1.ListOptions{})
 		if err != nil {
 			klog.Errorf("Unable to get PVC in shoot: %v", err)

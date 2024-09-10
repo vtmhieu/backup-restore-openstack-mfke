@@ -63,24 +63,30 @@ func (r *SyncSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	// Check existance + finalizer
 	if err := r.Client.Get(ctx, types.NamespacedName{Name: req.Name, Namespace: req.Namespace}, syncSnapshot); err != nil {
+
 		if apierrors.IsNotFound(err) {
 			log.V(1).Info("Object is gone, stop reconciling")
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, fmt.Errorf("error retrieving object from store: %w", err)
 	}
+
 	if !controllerutil.ContainsFinalizer(syncSnapshot, SyncSnapshotFinalizerName) {
+
 		controllerutil.AddFinalizer(syncSnapshot, SyncSnapshotFinalizerName)
+
 		if err := r.Update(ctx, syncSnapshot); err != nil {
 			log.Error(err, "Failed to update restorePvc controller finalizer")
 			return ctrl.Result{}, err
 		}
+
 		if err := r.Get(ctx, req.NamespacedName, syncSnapshot); err != nil {
 			log.Error(err, "Failed to re-fetch syncSnapshot list in shoot")
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{}, nil
 	}
+
 	if len(syncSnapshot.Status.Conditions) == 0 {
 		meta.SetStatusCondition(&syncSnapshot.Status.Conditions, metav1.Condition{
 			Type:    "Available",
@@ -88,6 +94,7 @@ func (r *SyncSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			Reason:  "Reconciling",
 			Message: "Starting reconciliation"})
 		klog.Infof("Set Status Condition of restorePvc crd %v", syncSnapshot.Status.Conditions)
+
 		if err := r.Status().Update(ctx, syncSnapshot); err != nil {
 			log.Error(err, "Failed to update restorePvc status condition")
 			return ctrl.Result{}, err
@@ -106,7 +113,9 @@ func (r *SyncSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	if syncSnapshot.ObjectMeta.DeletionTimestamp.IsZero() {
+
 		missingSnapshots, extraSnapshots, err := r.ReconcileSyncSnapshot(ctx, r.Client, syncSnapshot)
+
 		if err != nil {
 			klog.Info("Reconcile PVC Failed")
 			meta.SetStatusCondition(&syncSnapshot.Status.Conditions, metav1.Condition{Type: "Available",
@@ -114,23 +123,27 @@ func (r *SyncSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Request
 				Message: fmt.Sprintf("Failed to reconcile for the custom resource (%s): (%s)", syncSnapshot.Name, err)})
 			syncSnapshot.Status.MissingSnapshot = missingSnapshots
 			syncSnapshot.Status.ExtraSnapshot = extraSnapshots
+
 			if err := r.Status().Update(ctx, syncSnapshot); err != nil {
 				log.Error(err, "Failed to update PVsnapshot crds status")
 				return ctrl.Result{}, err
 			}
 			return ctrl.Result{}, err
 		}
+
 		log.V(1).Info("Reconcile", "PVSnapshot list has been successfully updated", req.Namespace)
 		meta.SetStatusCondition(&syncSnapshot.Status.Conditions, metav1.Condition{Type: "Available",
 			Status: metav1.ConditionTrue, Reason: "Reconciling",
 			Message: fmt.Sprintf("PVSnapshot List %s in shoot %s is updated", syncSnapshot.Name, syncSnapshot.Namespace)})
 		syncSnapshot.Status.MissingSnapshot = missingSnapshots
 		syncSnapshot.Status.ExtraSnapshot = extraSnapshots
+
 		if err := r.Status().Update(ctx, syncSnapshot); err != nil {
 			log.Error(err, "Failed to update PVSnapshot crds status")
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{RequeueAfter: 20 * time.Minute}, nil
+
 	} else {
 		meta.SetStatusCondition(&syncSnapshot.Status.Conditions, metav1.Condition{Type: "Degraded",
 			Status: metav1.ConditionUnknown, Reason: "Finalizing",

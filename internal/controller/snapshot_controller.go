@@ -76,6 +76,7 @@ func (r *CreateSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		}
 		return ctrl.Result{}, fmt.Errorf("error retrieving object from store: %w", err)
 	}
+
 	if !controllerutil.ContainsFinalizer(snapshot, SnapshotFinalizerName) {
 		controllerutil.AddFinalizer(snapshot, SnapshotFinalizerName)
 		if err := r.Update(ctx, snapshot); err != nil {
@@ -88,6 +89,7 @@ func (r *CreateSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		}
 		return ctrl.Result{}, nil
 	}
+
 	if len(snapshot.Status.Conditions) == 0 {
 		meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{
 			Type:    "Available",
@@ -116,90 +118,41 @@ func (r *CreateSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	if snapshot.ObjectMeta.DeletionTimestamp.IsZero() {
 		// CREATE snapshot
 		snapshotReturn, err := r.ReconcileCreateSnapshot(ctx, r.Client, snapshot)
+
 		if err != nil {
 			klog.Info("Reconcile createSnapshot Failed")
-			meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{Type: "Available",
-				Status: metav1.ConditionFalse, Reason: "Create",
-				Message: fmt.Sprintf("Failed to create snapshot for the PVC (%s): (%s)", snapshot.Spec.PvcName, err)})
+			return r.handleSnapshotError(ctx, snapshot, snapshotReturn, err)
+		}
 
-			newStatus := snapshotv1beta1.SnapshotStatus{
-				SourcePvcName:           snapshot.Spec.PvcName,
-				SnapshotName:            snapshot.Name,
-				Namespace:               snapshot.Spec.Namespace,
-				VolumeSnapshotClassName: snapshotReturn.VolumeSnapshotClassName,
-				SnapshotContentName:     snapshotReturn.SnapshotContentName,
-				CreationTime:            snapshotReturn.CreationTime,
-				ReadyToUse:              snapshotReturn.ReadyToUse,
-				RestoreSize:             snapshotReturn.RestoreSize,
-				CreationStatus:          "Failed",
-				SnapshotType:            snapshot.Spec.SnapshotType,
-			}
-			if err := r.updateSnapshotStatus(ctx, snapshot, newStatus); err != nil {
-				log.Error(err, "Failed to update snapshot CRD status")
-				return ctrl.Result{}, err
-			}
-			return ctrl.Result{}, err
-		}
 		log.V(1).Info("Reconcile", "Snapshot has been successfully created", req.Namespace)
-		meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{Type: "Available",
-			Status: metav1.ConditionTrue, Reason: "Create",
-			Message: fmt.Sprintf("Snapshot in shoot %s is created successfully", snapshot.Namespace)})
-		klog.Infof("Status of Snapshot %v", snapshot.Status.Conditions)
-		newStatus := snapshotv1beta1.SnapshotStatus{
-			SourcePvcName:           snapshot.Spec.PvcName,
-			SnapshotName:            snapshot.Name,
-			Namespace:               snapshot.Spec.Namespace,
-			VolumeSnapshotClassName: snapshotReturn.VolumeSnapshotClassName,
-			SnapshotContentName:     snapshotReturn.SnapshotContentName,
-			CreationTime:            snapshotReturn.CreationTime,
-			ReadyToUse:              snapshotReturn.ReadyToUse,
-			RestoreSize:             snapshotReturn.RestoreSize,
-			CreationStatus:          "Succeeded",
-			SnapshotType:            snapshot.Spec.SnapshotType,
-		}
-		if err := r.updateSnapshotStatus(ctx, snapshot, newStatus); err != nil {
-			log.Error(err, "Failed to update snapshot CRD status")
-			return ctrl.Result{}, err
-		}
-		// reconcile schedule List
-		return ctrl.Result{}, nil
+		return r.handleSnapshotSuccess(ctx, snapshot, snapshotReturn)
+
 	} else {
-		meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{Type: "Degraded",
-			Status: metav1.ConditionUnknown, Reason: "Finalizing",
-			Message: fmt.Sprintf("Performing finalizer operations for the custom resource: %s ", snapshot.Name)})
+		// Set status to Degraded while performing finalizer operations
+		r.setStatusCondition(snapshot, metav1.ConditionUnknown, "Finalizing",
+			fmt.Sprintf("Performing finalizer operations for the custom resource: %s", snapshot.Name))
 
 		if err := r.Status().Update(ctx, snapshot); err != nil {
-			log.Error(err, "Failed to update createSnapshot crds status")
+			log.Error(err, "Failed to update Snapshot CRD status")
 			return ctrl.Result{}, err
 		}
-		// The object is being deleted
-		ns := &corev1.Namespace{}
-		err := r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: req.Namespace}, ns)
+
+		// Check if the namespace is being deleted
+		ns, err := r.getNamespace(ctx, req.Namespace)
 		if err != nil {
-			log.Error(err, "unable to fetch Namespace")
+			log.Error(err, "Unable to fetch Namespace")
 			return ctrl.Result{}, err
 		}
+
 		if !ns.ObjectMeta.DeletionTimestamp.IsZero() {
-			// remove our finalizer from the list and update it.
-			controllerutil.RemoveFinalizer(snapshot, SnapshotFinalizerName)
-			if err := r.Update(ctx, snapshot); err != nil {
-				return ctrl.Result{}, err
-			}
+			return r.removeFinalizerAndUpdate(ctx, snapshot)
 		}
+
+		// Handle snapshot deletion if finalizer is present
 		if controllerutil.ContainsFinalizer(snapshot, SnapshotFinalizerName) {
-			if err := r.DeleteSnapshot(ctx, r.Client, snapshot); err != nil {
-				return ctrl.Result{}, err
-			}
-			log.V(1).Info("Reconcile", "Snapshot is deleted successfully in shoot", req.Namespace)
-			//remove our finalizer from the list and update it.
-			if ok := controllerutil.RemoveFinalizer(snapshot, SnapshotFinalizerName); !ok {
-				log.Error(err, "Failed to remove finalizer for Snapshot crds")
-				return ctrl.Result{Requeue: true}, nil
-			}
-			if err := r.Update(ctx, snapshot); err != nil {
-				return ctrl.Result{}, err
-			}
+			return r.deleteSnapshotWithFinalizer(ctx, snapshot, req)
 		}
+
 		// Stop reconciliation as the item is being deleted
 		return ctrl.Result{}, nil
 	}
@@ -230,7 +183,8 @@ func (r *CreateSnapshotReconciler) ReconcileCreateSnapshot(ctx context.Context, 
 	}
 
 	for _, snapshot := range snapshotListReturn {
-		if snapshot.SnapshotName == createSnapshot.Name && snapshot.SourcePvcName == createSnapshot.Spec.PvcName {
+		if snapshot.SnapshotName == createSnapshot.Name &&
+			snapshot.SourcePvcName == createSnapshot.Spec.PvcName {
 			if createSnapshot.Annotations[CreateSnapshotEnabledAnnotation] == "true" {
 				delete(createSnapshot.Annotations, CreateSnapshotEnabledAnnotation)
 				if err := r.Update(ctx, createSnapshot); err != nil {
@@ -382,6 +336,112 @@ func statusEqual(a, b snapshotv1beta1.SnapshotStatus) bool {
 		a.ReadyToUse == b.ReadyToUse &&
 		a.RestoreSize == b.RestoreSize &&
 		a.CreationStatus == b.CreationStatus
+}
+
+func (r *CreateSnapshotReconciler) handleSnapshotError(
+	ctx context.Context, snapshot *snapshotv1beta1.Snapshot,
+	snapshotReturn snapshotv1beta1.PvSnapshotItem, err error) (ctrl.Result, error) {
+	newStatus := r.buildSnapshotStatus(snapshot, snapshotReturn, "Failed")
+	if err := r.updateSnapshotStatus(ctx, snapshot, newStatus); err != nil {
+		klog.Error(err, "Failed to update snapshot CRD status")
+		return ctrl.Result{}, err
+	}
+
+	meta.SetStatusCondition(
+		&snapshot.Status.Conditions,
+		metav1.Condition{
+			Type:    "Available",
+			Status:  metav1.ConditionFalse,
+			Reason:  "Create",
+			Message: fmt.Sprintf("Failed to create snapshot for the PVC (%s): (%s)", snapshot.Spec.PvcName, err.Error()),
+		})
+
+	if err := r.Status().Update(ctx, snapshot); err != nil {
+		klog.Error(err, "Failed to update Snapshot status condition")
+		return ctrl.Result{}, err
+	}
+
+	return ctrl.Result{}, err
+}
+
+func (r *CreateSnapshotReconciler) handleSnapshotSuccess(ctx context.Context,
+	snapshot *snapshotv1beta1.Snapshot, snapshotReturn snapshotv1beta1.PvSnapshotItem) (ctrl.Result, error) {
+	newStatus := r.buildSnapshotStatus(snapshot, snapshotReturn, "Succeeded")
+	if err := r.updateSnapshotStatus(ctx, snapshot, newStatus); err != nil {
+		klog.Error(err, "Failed to update snapshot CRD status")
+		return ctrl.Result{}, err
+	}
+
+	meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{
+		Type:    "Available",
+		Status:  metav1.ConditionTrue,
+		Reason:  "Create",
+		Message: fmt.Sprintf("Snapshot in shoot %s is created successfully", snapshot.Namespace),
+	})
+
+	if err := r.Status().Update(ctx, snapshot); err != nil {
+		klog.Error(err, "Failed to update Snapshot status condition")
+		return ctrl.Result{}, err
+	}
+
+	return ctrl.Result{}, nil
+}
+
+func (r *CreateSnapshotReconciler) buildSnapshotStatus(snapshot *snapshotv1beta1.Snapshot,
+	snapshotReturn snapshotv1beta1.PvSnapshotItem, creationStatus string) snapshotv1beta1.SnapshotStatus {
+	return snapshotv1beta1.SnapshotStatus{
+		SourcePvcName:           snapshot.Spec.PvcName,
+		SnapshotName:            snapshot.Name,
+		Namespace:               snapshot.Spec.Namespace,
+		VolumeSnapshotClassName: snapshotReturn.VolumeSnapshotClassName,
+		SnapshotContentName:     snapshotReturn.SnapshotContentName,
+		CreationTime:            snapshotReturn.CreationTime,
+		ReadyToUse:              snapshotReturn.ReadyToUse,
+		RestoreSize:             snapshotReturn.RestoreSize,
+		CreationStatus:          creationStatus,
+		SnapshotType:            snapshot.Spec.SnapshotType,
+	}
+}
+
+func (r *CreateSnapshotReconciler) setStatusCondition(snapshot *snapshotv1beta1.Snapshot, status metav1.ConditionStatus, reason, message string) {
+	meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{
+		Type:    "Degraded",
+		Status:  status,
+		Reason:  reason,
+		Message: message,
+	})
+}
+
+func (r *CreateSnapshotReconciler) getNamespace(ctx context.Context, namespace string) (*corev1.Namespace, error) {
+	ns := &corev1.Namespace{}
+	err := r.Get(ctx, types.NamespacedName{Name: namespace}, ns)
+	return ns, err
+}
+
+func (r *CreateSnapshotReconciler) removeFinalizerAndUpdate(ctx context.Context, snapshot *snapshotv1beta1.Snapshot) (ctrl.Result, error) {
+	controllerutil.RemoveFinalizer(snapshot, SnapshotFinalizerName)
+	if err := r.Update(ctx, snapshot); err != nil {
+		return ctrl.Result{}, err
+	}
+	return ctrl.Result{}, nil
+}
+
+func (r *CreateSnapshotReconciler) deleteSnapshotWithFinalizer(ctx context.Context, snapshot *snapshotv1beta1.Snapshot, req ctrl.Request) (ctrl.Result, error) {
+	if err := r.DeleteSnapshot(ctx, r.Client, snapshot); err != nil {
+		return ctrl.Result{}, err
+	}
+	klog.V(1).Info("Reconcile", "Snapshot is deleted successfully in shoot", req.Namespace)
+
+	if ok := controllerutil.RemoveFinalizer(snapshot, SnapshotFinalizerName); !ok {
+		klog.Error(nil, "Failed to remove finalizer for Snapshot CRD")
+		return ctrl.Result{Requeue: true}, nil
+	}
+
+	if err := r.Update(ctx, snapshot); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	return ctrl.Result{}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
