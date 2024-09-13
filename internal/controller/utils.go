@@ -235,47 +235,6 @@ parameters:
 	return "csi-cinder-snapclass", nil
 }
 
-// func patchVolumeSnapshotClasses(dynamicClienSet *dynamic.DynamicClient) (string, error) {
-// 	// Define the GroupVersionResource for VolumeSnapshotClass
-// 	gvr := schema.GroupVersionResource{
-// 		Group:    "snapshot.storage.k8s.io",
-// 		Version:  "v1",
-// 		Resource: "volumesnapshotclasses",
-// 	}
-
-// 	// Read the YAML file
-// 	yamlFile := `
-// apiVersion: snapshot.storage.k8s.io/v1
-// kind: VolumeSnapshotClass
-// metadata:
-//   name: csi-cinder-snapclass
-//   annotations:
-//     snapshot.storage.kubernetes.io/is-default-class: "true"
-// driver: cinder.csi.openstack.org
-// deletionPolicy: Delete
-// parameters:
-//   type: Premium-SSD
-//   force-create: "true"
-// `
-
-// 	// Decode the YAML file
-// 	decoder := yaml.NewYAMLOrJSONDecoder(strings.NewReader(yamlFile), 100)
-// 	obj := &unstructured.Unstructured{}
-// 	if err := decoder.Decode(obj); err != nil {
-// 		fmt.Printf("Error decoding YAML file: %v\n", err)
-// 		return "", err
-// 	}
-
-// 	// Apply the resource to the cluster
-// 	namespace := "" // VolumeSnapshotClass is a cluster-scoped resource
-// 	_, err := dynamicClienSet.Resource(gvr).Namespace(namespace).Patch(context.TODO(), obj.GetName(), metav1.PatchOptions{})
-// 	if err != nil {
-// 		fmt.Printf("Error creating resource: %v\n", err)
-// 		return "", err
-// 	}
-// 	return "csi-cinder-snapclass", nil
-// }
-
 func getVolumeSnapShot(dynamicClienSet *dynamic.DynamicClient,
 	resourceNamespace string) ([]snapshotv1beta1.PvSnapshotItem, error) {
 	pvSnapshotItemList := []snapshotv1beta1.PvSnapshotItem{}
@@ -520,65 +479,6 @@ func convertTimeNow2String(now time.Time) string {
 	return converted
 }
 
-// func createSnapshot(dynamicClientSet *dynamic.DynamicClient, snapshotName string, volumeSnapshotClassName string, pvcName string, namespace string) error {
-// 	// Define the GroupVersionResource for VolumeSnapshotClass
-// 	gvr := schema.GroupVersionResource{
-// 		Group:    "snapshot.storage.k8s.io",
-// 		Version:  "v1",
-// 		Resource: VolumeSnapshot,
-// 	}
-
-// 	currentTimeString := convertTimeNow2String(time.Now())
-
-// 	// Create YAML content with user input
-// 	yamlContent := fmt.Sprintf(`
-// apiVersion: snapshot.storage.k8s.io/v1
-// kind: VolumeSnapshot
-// metadata:
-//   name: %s
-// spec:
-//   volumeSnapshotClassName: %s
-//   source:
-//     persistentVolumeClaimName: %s
-// `, pvcName+currentTimeString, volumeSnapshotClassName, pvcName)
-
-// 	// Decode the YAML content
-// 	decoder := yaml.NewYAMLOrJSONDecoder(strings.NewReader(yamlContent), 100)
-// 	obj := &unstructured.Unstructured{}
-// 	if err := decoder.Decode(obj); err != nil {
-// 		fmt.Printf("Error decoding YAML content: %v\n", err)
-// 		return err
-// 	}
-
-// 	// Apply the resource to the cluster
-// 	_, err := dynamicClientSet.Resource(gvr).Namespace(namespace).Create(context.TODO(), obj, metav1.CreateOptions{})
-// 	if err != nil {
-// 		fmt.Printf("Error creating resource: %v\n", err)
-// 		return err
-// 	}
-// 	return nil
-// }
-
-// func createSnapshotScheduler(dynamicClientSet *dynamic.DynamicClient, name string, pvcName string, namespace string) error {
-// 	// check if volumeSnapshotClasses existed
-// 	volumeSnapshotClassesExisted, err := checkVolumeSnapshotClasses(dynamicClientSet)
-// 	if err != nil {
-// 		klog.Infof("Cannot get volumeSnapshotClasses crds in shoot cluster")
-// 	}
-// 	// not exist -> creat volume snapshot classes
-// 	if !volumeSnapshotClassesExisted {
-// 		_, err = createVolumeSnapshotClasses(dynamicClientSet)
-// 		if err != nil {
-// 			klog.Infof("The volumeSnapshotClassName already existed")
-// 		}
-// 	}
-
-// 	// create Snapshot base on input
-// 	err = createSnapshot(dynamicClientSet, name, volumeSnapshotClassName, pvcName, namespace)
-
-// 	return err
-// }
-
 func getPvSnapshotListPerNamespace(dynamicClienSet *dynamic.DynamicClient, namespace string) ([]snapshotv1beta1.PvSnapshotItem, error) {
 	snapshotList := []snapshotv1beta1.PvSnapshotItem{}
 
@@ -604,6 +504,15 @@ func getSeedSnapshotList(ctx context.Context, c client.Client) (snapshotv1beta1.
 		return *snapshotList, err
 	}
 	return *snapshotList, nil
+}
+
+func getSeedRestoredPvcList(ctx context.Context, c client.Client) (snapshotv1beta1.RestorePvcList, error) {
+	restoreList := &snapshotv1beta1.RestorePvcList{}
+	if err := c.List(ctx, restoreList); err != nil {
+		klog.Errorf("Error listing Snapshots: %s", err)
+		return *restoreList, nil
+	}
+	return *restoreList, nil
 }
 
 func getPvSnapshotStatus(dynamicClienSet *dynamic.DynamicClient, namespaceList []string) ([]snapshotv1beta1.SnapshotStatus, error) {
@@ -648,4 +557,21 @@ func envFromConfigMap(env string, configMapName string, key string) corev1.EnvVa
 			},
 		},
 	}
+}
+
+// checkRestorePvcInShoot check if there is pvc in shoot
+// mapping with crds restorePvcs in seed
+func checkRestorePvcInShoot(ctx context.Context, shootClientSet *kubernetes.Clientset, restorePvcSeed snapshotv1beta1.RestorePvc) (bool, error) {
+	restorePvcShootNs := restorePvcSeed.Status.DesNamespace
+
+	restorePvcShoot, err := shootClientSet.CoreV1().PersistentVolumeClaims(restorePvcShootNs).Get(ctx, restorePvcSeed.Name, metav1.GetOptions{})
+	if err != nil {
+		return true, nil
+	}
+
+	if restorePvcShoot == nil {
+		return false, nil
+	}
+
+	return true, nil
 }
