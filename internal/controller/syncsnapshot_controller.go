@@ -326,7 +326,15 @@ func (r *SyncSnapshotReconciler) ReconcileSyncRestore(ctx context.Context,
 		}
 
 		if pvcExist {
-
+			err := reconcileRestoredPvc(ctx, c, restorePvc,)
+			if err != nil {
+				return err  // Return the error if something goes wrong during reconciliation
+			}
+		}else{
+			err := deleteRestoredPvc(ctx, c, restorePvc)
+			if err != nil {
+				return err  // Return the error if something goes wrong during reconciliation
+			}
 		}
 	}
 
@@ -369,13 +377,56 @@ func (r *SyncSnapshotReconciler) newDeleteSnapshot(ctx context.Context, c client
 	return nil
 }
 
-func reconcileRestoredPvc(ctx context.Context, c client.Client, restorePvcSeed snapshotv1beta1.RestorePvc) error {
-	restorePvc := &snapshotv1beta1.RestorePvc{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:        restorePvcSeed.Name,
-			Namespace:   restorePvcSeed.Namespace,
-			Annotations: "",
-		},
+func reconcileRestoredPvc(
+	ctx context.Context,
+	c client.Client,
+	restorePvcSeed snapshotv1beta1.RestorePvc,
+	annotationKey string,
+	annotationValue string,
+) error {
+	// Retrieve the existing RestorePvc object
+	restorePvc := &snapshotv1beta1.RestorePvc{}
+	if err := c.Get(ctx, client.ObjectKey{Name: restorePvcSeed.Name, Namespace: restorePvcSeed.Namespace}, restorePvc); err != nil {
+		// If the object is not found, treat it as already deleted
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+
+	// Create a patch object to modify the annotations
+	patch := client.MergeFrom(restorePvc.DeepCopy())
+
+	// Update the annotations
+	if restorePvc.Annotations == nil {
+		restorePvc.Annotations = make(map[string]string)
+	}
+	restorePvc.Annotations[annotationKey] = annotationValue
+
+	// Apply the patch
+	if err := c.Patch(ctx, restorePvc, patch); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func deleteRestoredPvc(
+	ctx context.Context,
+	c client.Client,
+	restorePvcSeed snapshotv1beta1.RestorePvc
+)error{
+	// Retrieve the existing RestorePvc object
+	restorePvc := &snapshotv1beta1.RestorePvc{}
+	if err := c.Get(ctx, client.ObjectKey{Name: restorePvcSeed.Name, Namespace: restorePvcSeed.Namespace}, restorePvc); err != nil {
+		// If the object is not found, treat it as already deleted
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	if err := c.Delete(ctx, restorePvc); err != nil {
+		return err
 	}
 
 	return nil
