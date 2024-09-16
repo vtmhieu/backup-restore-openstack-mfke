@@ -230,7 +230,7 @@ func (r *PvSnapshotReconciler) getPvSnapshotStatus(dynamicClienSet *dynamic.Dyna
 	pvSnapshotStatus := snapshotv1beta1.PvSnapshotStatus{}
 	for _, ns := range namespaceList {
 		//klog.Infof("Checking snapshot in namespace: %s", ns)
-		resp, err := getVolumeSnapShot(dynamicClienSet, ns)
+		resp, err := getVolumeSnapShotInShoot(dynamicClienSet, ns)
 		if err != nil {
 			fmt.Printf("Unable to get Snapshot List in shoot cluster namespace: %s", ns)
 			continue

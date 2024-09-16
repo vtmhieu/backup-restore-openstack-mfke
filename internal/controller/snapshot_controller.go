@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 
@@ -382,6 +383,9 @@ func (r *CreateSnapshotReconciler) handleSnapshotSuccess(ctx context.Context,
 	if err := r.Status().Update(ctx, snapshot); err != nil {
 		klog.Error(err, "Failed to update Snapshot status condition")
 		return ctrl.Result{}, err
+	}
+	if snapshot.Status.CreationTime == "N/A" {
+		return ctrl.Result{RequeueAfter: 3 * time.Minute}, nil
 	}
 
 	return ctrl.Result{}, nil

@@ -109,29 +109,28 @@ func (r *SyncSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			log.Error(err, "Failed to re-fetch restorePvc list")
 			return ctrl.Result{}, err
 		}
-		klog.Infof("Fetch of restorePvc %v", syncSnapshot.Status.Conditions)
+		klog.Infof("Fetch of syncSnapshot %v", syncSnapshot.Status.Conditions)
 	}
 
 	if syncSnapshot.ObjectMeta.DeletionTimestamp.IsZero() {
 
 		missingSnapshots, extraSnapshots, err := r.ReconcileSyncSnapshot(ctx, r.Client, syncSnapshot)
-
 		if err != nil {
-			klog.Info("Reconcile PVC Failed")
-			meta.SetStatusCondition(&syncSnapshot.Status.Conditions, metav1.Condition{Type: "Available",
-				Status: metav1.ConditionFalse, Reason: "Reconciling",
-				Message: fmt.Sprintf("Failed to reconcile for the custom resource (%s): (%s)", syncSnapshot.Name, err)})
-			syncSnapshot.Status.MissingSnapshot = missingSnapshots
-			syncSnapshot.Status.ExtraSnapshot = extraSnapshots
-
-			if err := r.Status().Update(ctx, syncSnapshot); err != nil {
-				log.Error(err, "Failed to update PVsnapshot crds status")
-				return ctrl.Result{}, err
-			}
-			return ctrl.Result{}, err
+			log.Error(err, "Failed to Sync Pvc Snapshot")
+			//return r.updateStatusWithError(ctx, syncSnapshot, missingSnapshots, extraSnapshots, err, "Failed to Sync Pvc Snapshot")
 		}
 
-		log.V(1).Info("Reconcile", "PVSnapshot list has been successfully updated", req.Namespace)
+		if err = r.ReconcileSyncRestore(ctx, r.Client, syncSnapshot); err != nil {
+			log.Error(err, "Failed to Sync Restore Pvc")
+			//return r.updateStatusWithError(ctx, syncSnapshot, missingSnapshots, extraSnapshots, err, "Failed to Sync Restore Pvc")
+		}
+
+		if err = r.removeSyncAnnotation(ctx, syncSnapshot); err != nil {
+			log.Error(err, "Failed to remove Annotation for sync snapshot")
+			return r.updateStatusWithError(ctx, syncSnapshot, missingSnapshots, extraSnapshots, err, "Failed to remove Annotation for sync snapshot")
+		}
+
+		log.V(1).Info("Reconcile", "Sync proccess has been run successfully", req.Namespace)
 		meta.SetStatusCondition(&syncSnapshot.Status.Conditions, metav1.Condition{Type: "Available",
 			Status: metav1.ConditionTrue, Reason: "Reconciling",
 			Message: fmt.Sprintf("PVSnapshot List %s in shoot %s is updated", syncSnapshot.Name, syncSnapshot.Namespace)})
@@ -142,17 +141,19 @@ func (r *SyncSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			log.Error(err, "Failed to update PVSnapshot crds status")
 			return ctrl.Result{}, err
 		}
-		return ctrl.Result{RequeueAfter: 20 * time.Minute}, nil
+		return ctrl.Result{RequeueAfter: 10 * time.Minute}, nil
 
 	} else {
-		meta.SetStatusCondition(&syncSnapshot.Status.Conditions, metav1.Condition{Type: "Degraded",
-			Status: metav1.ConditionUnknown, Reason: "Finalizing",
-			Message: fmt.Sprintf("Performing finalizer operations for the custom resource: %s ", syncSnapshot.Name)})
+		meta.SetStatusCondition(&syncSnapshot.Status.Conditions,
+			metav1.Condition{Type: "Degraded",
+				Status: metav1.ConditionUnknown, Reason: "Finalizing",
+				Message: fmt.Sprintf("Performing finalizer operations for the custom resource: %s ", syncSnapshot.Name)})
 
 		if err := r.Status().Update(ctx, syncSnapshot); err != nil {
 			log.Error(err, "Failed to update restorePvc crds status")
 			return ctrl.Result{}, err
 		}
+
 		// The object is being deleted
 		ns := &corev1.Namespace{}
 		err := r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: req.Namespace}, ns)
@@ -160,6 +161,7 @@ func (r *SyncSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			log.Error(err, "unable to fetch Namespace")
 			return ctrl.Result{}, err
 		}
+
 		if !ns.ObjectMeta.DeletionTimestamp.IsZero() {
 			// remove our finalizer from the list and update it.
 			controllerutil.RemoveFinalizer(syncSnapshot, SyncSnapshotFinalizerName)
@@ -167,6 +169,7 @@ func (r *SyncSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Request
 				return ctrl.Result{}, err
 			}
 		}
+
 		if controllerutil.ContainsFinalizer(syncSnapshot, SyncSnapshotFinalizerName) {
 			if ok := controllerutil.RemoveFinalizer(syncSnapshot, SyncSnapshotFinalizerName); !ok {
 				log.Error(err, "Failed to remove finalizer for createSnapshot crds")
@@ -180,28 +183,35 @@ func (r *SyncSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 }
 
-func (r *SyncSnapshotReconciler) ReconcileSyncSnapshot(ctx context.Context, c client.Client, syncSnapshot *snapshotv1beta1.SyncSnapshot) ([]snapshotv1beta1.SnapshotStatus, []snapshotv1beta1.SnapshotStatus, error) {
+func (r *SyncSnapshotReconciler) ReconcileSyncSnapshot(ctx context.Context,
+	c client.Client, syncSnapshot *snapshotv1beta1.SyncSnapshot) (
+	[]snapshotv1beta1.SnapshotStatus, []snapshotv1beta1.SnapshotStatus, error) {
 
 	missingSnapshots := []snapshotv1beta1.SnapshotStatus{}
 	extraSnapshots := []snapshotv1beta1.SnapshotStatus{}
+
 	// get namespace in seed
 	namespace := syncSnapshot.Namespace
 	clusterName := namespace[4:]
+
 	// get kubeconfig
 	shootKubeconfigDataString, err := GetSecretShootKubeconfig(ctx, c, namespace)
 	if err != nil {
 		return missingSnapshots, extraSnapshots, fmt.Errorf("unable to get shoot secret data kubeconfig in ns %s: %v", clusterName, err)
 	}
+
 	// create shoot client set from this kubeconfig data
 	shootClientSet, err := CreateShootKubeClient(ctx, shootKubeconfigDataString, clusterName)
 	if err != nil {
 		return missingSnapshots, extraSnapshots, fmt.Errorf("unable to create shoot client set %s: %v", clusterName, err)
 	}
+
 	//create dynamic client from this kubeconfig data -> send request for crds
 	dynamicClientSet, err := CreateDynamicKubeClient(ctx, shootKubeconfigDataString)
 	if err != nil {
 		return missingSnapshots, extraSnapshots, fmt.Errorf("unable to create dynamic shoot client set %s: %v", clusterName, err)
 	}
+
 	// get namespace in shoot
 	namespaceList, err := GetNamespace(shootClientSet)
 	if err != nil {
@@ -212,11 +222,13 @@ func (r *SyncSnapshotReconciler) ReconcileSyncSnapshot(ctx context.Context, c cl
 	// get list of snapshot in seed and shoot
 	seedSnapshotList, err := getSeedSnapshotList(ctx, c)
 	if err != nil {
+		klog.Error("Unable to get seed Snapshot List", err)
 		return missingSnapshots, extraSnapshots, fmt.Errorf("unable to get pvc list in seed %s: %v", clusterName, err)
 	}
 
 	shootSnapshotList, err := getPvSnapshotStatus(dynamicClientSet, namespaceList)
 	if err != nil {
+		klog.Error("Unable to get shoot Snapshot List", err)
 		return missingSnapshots, extraSnapshots, fmt.Errorf("unable to get pvc list in shoot %s: %v", clusterName, err)
 	}
 
@@ -242,9 +254,13 @@ func (r *SyncSnapshotReconciler) ReconcileSyncSnapshot(ctx context.Context, c cl
 			// only synce the snapshot which has volumeSnapshotClassname = csi-cinder-snapclass
 			if snapshot.VolumeSnapshotClassName == "csi-cinder-snapclass" {
 				missingSnapshots = append(missingSnapshots, snapshot)
-				err := r.newCreateSnapshot(ctx, c, snapshot.SnapshotName, snapshot.SourcePvcName, snapshot.Namespace, syncSnapshot.Namespace, "Manually")
+
+				err := r.newCreateSnapshot(ctx, c, snapshot.SnapshotName,
+					snapshot.SourcePvcName, snapshot.Namespace, syncSnapshot.Namespace, "Manually")
+
 				if err != nil {
-					klog.Errorf("[seed] unable to sync snapshot %s for persistentVolumeName %s in namespace %s: %s", snapshot.SnapshotName, snapshot.SourcePvcName, snapshot.Namespace, err)
+					klog.Errorf("[seed] unable to sync snapshot %s for persistentVolumeName %s in namespace %s: %s",
+						snapshot.SnapshotName, snapshot.SourcePvcName, snapshot.Namespace, err)
 				}
 			}
 		}
@@ -253,22 +269,68 @@ func (r *SyncSnapshotReconciler) ReconcileSyncSnapshot(ctx context.Context, c cl
 	// find ExtraSnapshots: existed in seed but not in shoot
 	for key, snapshot := range seedSnapshotMap {
 		if _, exists := shootSnapshotMap[key]; !exists {
+
 			extraSnapshots = append(extraSnapshots, snapshot)
+
 			err := r.newDeleteSnapshot(ctx, c, snapshot.SnapshotName, syncSnapshot.Namespace, snapshot.SourcePvcName, snapshot.Namespace)
+
 			if err != nil {
-				klog.Errorf("[shoot] unable to sync snapshot %s for persistentVolumeName %s in namespace %s: %s", snapshot.SnapshotName, snapshot.SourcePvcName, snapshot.Namespace, err)
+				klog.Errorf("[shoot] unable to sync snapshot %s for persistentVolumeName %s in namespace %s: %s",
+					snapshot.SnapshotName, snapshot.SourcePvcName, snapshot.Namespace, err)
 			}
 		}
 	}
 
-	if syncSnapshot.Annotations[SyncSnapshotReconcilerAnnotation] == "true" {
-		delete(syncSnapshot.Annotations, SyncSnapshotReconcilerAnnotation)
-		if err := r.Update(ctx, syncSnapshot); err != nil {
-			return missingSnapshots, extraSnapshots, fmt.Errorf("error to delete annotation %s in pvSnapshot resource: [%v]", SyncSnapshotReconcilerAnnotation, err)
+	return missingSnapshots, extraSnapshots, nil
+}
+
+func (r *SyncSnapshotReconciler) ReconcileSyncRestore(ctx context.Context,
+	c client.Client, syncSnapshot *snapshotv1beta1.SyncSnapshot) error {
+
+	// get namespace in seed
+	namespace := syncSnapshot.Namespace
+	clusterName := namespace[4:]
+
+	// get kubeconfig
+	shootKubeconfigDataString, err := GetSecretShootKubeconfig(ctx, c, namespace)
+	if err != nil {
+		return fmt.Errorf("unable to get shoot secret data kubeconfig in ns %s: %v", clusterName, err)
+	}
+
+	// create shoot client set from this kubeconfig data
+	shootClientSet, err := CreateShootKubeClient(ctx, shootKubeconfigDataString, clusterName)
+	if err != nil {
+		return fmt.Errorf("unable to create shoot client set %s: %v", clusterName, err)
+	}
+
+	// get the list of Restore PVC -> check if not exist -> delete object
+	// if exist -> update status
+	restorePvcList, err := getSeedRestoredPvcList(ctx, c)
+	if err != nil {
+		return err
+	}
+
+	for _, restorePvc := range restorePvcList.Items {
+		pvcExist, err := checkRestorePvcInShoot(ctx, shootClientSet, restorePvc)
+
+		if err != nil {
+			return err
+		}
+
+		if pvcExist {
+			err := reconcileRestoredPvc(ctx, c, restorePvc, SyncSnapshotReconcilerAnnotation, "true")
+			if err != nil {
+				return err // Return the error if something goes wrong during reconciliation
+			}
+		} else {
+			err := deleteRestoredPvc(ctx, c, restorePvc)
+			if err != nil {
+				return err // Return the error if something goes wrong during reconciliation
+			}
 		}
 	}
 
-	return missingSnapshots, extraSnapshots, nil
+	return nil
 }
 
 func (r *SyncSnapshotReconciler) newCreateSnapshot(ctx context.Context, c client.Client, snapshotName string, pvcName string, shootNamespace string, seedNamespace string, snapshotType string) error {
@@ -305,6 +367,99 @@ func (r *SyncSnapshotReconciler) newDeleteSnapshot(ctx context.Context, c client
 	}
 
 	return nil
+}
+
+func reconcileRestoredPvc(
+	ctx context.Context,
+	c client.Client,
+	restorePvcSeed snapshotv1beta1.RestorePvc,
+	annotationKey string,
+	annotationValue string,
+) error {
+	// Retrieve the existing RestorePvc object
+	restorePvc := &snapshotv1beta1.RestorePvc{}
+	if err := c.Get(ctx, client.ObjectKey{Name: restorePvcSeed.Name, Namespace: restorePvcSeed.Namespace}, restorePvc); err != nil {
+		// If the object is not found, treat it as already deleted
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+
+	// Create a patch object to modify the annotations
+	patch := client.MergeFrom(restorePvc.DeepCopy())
+
+	// Update the annotations
+	if restorePvc.Annotations == nil {
+		restorePvc.Annotations = make(map[string]string)
+	}
+	restorePvc.Annotations[annotationKey] = annotationValue
+
+	// Apply the patch
+	if err := c.Patch(ctx, restorePvc, patch); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func deleteRestoredPvc(
+	ctx context.Context,
+	c client.Client,
+	restorePvcSeed snapshotv1beta1.RestorePvc,
+) error {
+	// Retrieve the existing RestorePvc object
+	restorePvc := &snapshotv1beta1.RestorePvc{}
+	if err := c.Get(ctx, client.ObjectKey{Name: restorePvcSeed.Name, Namespace: restorePvcSeed.Namespace}, restorePvc); err != nil {
+		// If the object is not found, treat it as already deleted
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	if err := c.Delete(ctx, restorePvc); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (r *SyncSnapshotReconciler) removeSyncAnnotation(ctx context.Context, syncSnapshot *snapshotv1beta1.SyncSnapshot) error {
+
+	if syncSnapshot.Annotations[SyncSnapshotReconcilerAnnotation] == "true" {
+		delete(syncSnapshot.Annotations, SyncSnapshotReconcilerAnnotation)
+
+		if err := r.Update(ctx, syncSnapshot); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// Helper function to update status with error
+func (r *SyncSnapshotReconciler) updateStatusWithError(
+	ctx context.Context,
+	syncSnapshot *snapshotv1beta1.SyncSnapshot,
+	missingSnapshots, extraSnapshots []snapshotv1beta1.SnapshotStatus,
+	err error, msg string) (ctrl.Result, error) {
+
+	klog.Info("Reconcile Sync Failed")
+	meta.SetStatusCondition(&syncSnapshot.Status.Conditions, metav1.Condition{
+		Type:    "Available",
+		Status:  metav1.ConditionFalse,
+		Reason:  "Reconciling",
+		Message: fmt.Sprintf("%s (%s): %s", msg, syncSnapshot.Name, err),
+	})
+	syncSnapshot.Status.MissingSnapshot = missingSnapshots
+	syncSnapshot.Status.ExtraSnapshot = extraSnapshots
+
+	if updateErr := r.Status().Update(ctx, syncSnapshot); updateErr != nil {
+		klog.Error(updateErr, "Failed to update Sync CRD status")
+		return ctrl.Result{}, updateErr
+	}
+
+	return ctrl.Result{}, err
 }
 
 // SetupWithManager sets up the controller with the Manager.
