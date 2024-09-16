@@ -23,7 +23,7 @@ spec:
       name: pvcName
       type: string
     - jsonPath: .status.namespace
-      name: namespace
+      name: shootNamespace
       type: string
     - jsonPath: .status.creationStatus
       name: creationStatus

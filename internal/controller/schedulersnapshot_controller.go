@@ -407,7 +407,13 @@ func (r *SchedulerSnapshotReconciler) ReconcileScheduleSnapshot(
 					for _, snapshot := range snapshotListReturn.Items {
 						if snapshot.Status.SourcePvcName == pvcSnapshotClass.PvcName {
 							// Calculate duration from creation time to now
-							duration, err := calculateDuration(snapshot.Status.CreationTime)
+
+							var duration time.Duration
+							if snapshot.Status.CreationTime != "" && snapshot.Status.CreationTime != "N/A" {
+								duration, err = calculateDuration(snapshot.Status.CreationTime)
+							} else {
+								duration, err = calculateDuration(snapshot.CreationTimestamp.String())
+							}
 							if err != nil {
 								klog.Errorf("Error calculating duration for snapshot %s: %v", snapshot.Status.SnapshotName, err)
 								continue
