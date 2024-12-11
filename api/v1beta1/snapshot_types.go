@@ -29,6 +29,7 @@ type SnapshotSpec struct {
 	SnapshotName string `json:"snapshotName,omitempty"`
 	Namespace    string `json:"namespace,omitempty"`
 	SnapshotType string `json:"snapshotType,omitempty"`
+	NumInUse     int    `json:"numInUse,omitempty"`
 }
 
 // CreateSnapshotStatus defines the observed state of CreateSnapshot
@@ -44,6 +45,7 @@ type SnapshotStatus struct {
 	ReadyToUse              bool               `json:"readyToUse,omitempty"`
 	RestoreSize             string             `json:"restoreSize,omitempty"`
 	SnapshotType            string             `json:"snapshotType,omitempty"`
+	InUse                   bool               `json:"inUse,omitempty"`
 }
 
 //+kubebuilder:object:root=true
@@ -56,6 +58,7 @@ type SnapshotStatus struct {
 // +kubebuilder:printcolumn:name="readyToUse",type=boolean,JSONPath=`.status.readyToUse`
 // +kubebuilder:printcolumn:name="snapshotType",type=string,JSONPath=`.status.snapshotType`
 // +kubebuilder:printcolumn:name="restoreSize",type=string,JSONPath=`.status.restoreSize`
+// +kubebuilder:printcolumn:name="inUse",type=boolean,JSONPath=`.status.inUse`
 
 // Snapshot is the Schema for the snapshots API
 type Snapshot struct {

@@ -143,15 +143,17 @@ func (r *RestorePvcReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			}
 		}
 		if controllerutil.ContainsFinalizer(restorePvc, RestorePVCFinalizerName) {
-			// if err := r.delete(ctx, log, falco); err != nil {
-			// 	return ctrl.Result{}, err
-			// }
-			// log.V(1).Info("Reconcile", "Falco is deleted successfully in shoot", req.Namespace)
 			// remove our finalizer from the list and update it.
 			if ok := controllerutil.RemoveFinalizer(restorePvc, RestorePVCFinalizerName); !ok {
 				log.Error(err, "Failed to remove finalizer for createSnapshot crds")
 				return ctrl.Result{Requeue: true}, nil
 			}
+
+			if err := r.updateDecrease_InUseSnapshot(ctx, restorePvc); err != nil {
+				log.Error(err, "Failed to update decrease_InUseSnapshot for createSnapshot crds")
+				return ctrl.Result{Requeue: true}, err
+			}
+
 			if err := r.Update(ctx, restorePvc); err != nil {
 				return ctrl.Result{}, err
 			}
@@ -230,6 +232,8 @@ func (r *RestorePvcReconciler) ReconcileRestorePvc(ctx context.Context, c client
 		}
 	}
 
+	// Start to restore for the first time or retry if it is failed
+	// at the end, increase the number of InUse
 	RestorePvcReturn, err = r.restorePvc(shootClientSet, restorePVCName, restorePvc.Spec.SourceNamespace, restorePvc.Spec.DesNamespace, restorePvc.Spec.SnapshotName, restorePvc.Spec.AccessModes, restorePvc.Spec.Storage)
 	if err != nil {
 		RestorePvcReturn = snapshotv1beta1.RestorePvcStatus{
@@ -243,12 +247,22 @@ func (r *RestorePvcReconciler) ReconcileRestorePvc(ctx context.Context, c client
 		return RestorePvcReturn, fmt.Errorf("unable to restore pvc %s from snapshot %s in shoot %s: %v", restorePVCName, restorePvc.Spec.SnapshotName, clusterName, err)
 	}
 
-	if restorePvc.Annotations[RestorePVCEnabledAnnotation] == "true" {
+	if val, exists := restorePvc.Annotations[RestorePVCEnabledAnnotation]; exists && val == "true" {
+		// Annotation exists and is "true", delete it
 		delete(restorePvc.Annotations, RestorePVCEnabledAnnotation)
 		if err := r.Update(ctx, restorePvc); err != nil {
 			return RestorePvcReturn, fmt.Errorf("error to delete annotation %s in restorePvc resource: [%v]", RestorePVCEnabledAnnotation, err)
 		}
+	} else {
+		// Annotation doesn't exist or is not "true"
+		if RestorePvcReturn.CreationStatus != "Failed" {
+			// Update spec NumInUse in snapshot resource
+			if err := r.updateIncrease_InUseSnapshot(ctx, restorePvc); err != nil {
+				return RestorePvcReturn, err
+			}
+		}
 	}
+
 	return RestorePvcReturn, nil
 }
 
@@ -422,6 +436,51 @@ func (r *RestorePvcReconciler) buildRestorePvcStatus(restorePvc *snapshotv1beta1
 		Status:             returnRestorePvc.Status,
 		CreationTime:       returnRestorePvc.CreationTime,
 	}
+}
+
+func (r *RestorePvcReconciler) updateIncrease_InUseSnapshot(ctx context.Context, restorePvc *snapshotv1beta1.RestorePvc) error {
+	snapshot := &snapshotv1beta1.Snapshot{}
+	if err := r.Client.Get(ctx, client.ObjectKey{Name: restorePvc.Spec.SnapshotName, Namespace: restorePvc.Namespace}, snapshot); err != nil {
+		// If the object is not found, treat it as already deleted
+		if apierrors.IsNotFound(err) {
+			klog.Errorf("failed to get snapshot: %v", err)
+			return err
+		}
+		klog.Errorf("failed to get snapshot: %v", err)
+		return err
+	}
+	// update the snapshot.Spec.NumInUse ++
+	snapshot.Spec.NumInUse++
+
+	// Update the snapshot resource in the cluster
+	if err := r.Client.Update(ctx, snapshot); err != nil {
+		return fmt.Errorf("failed to update snapshot NumInUse: %w", err)
+	}
+	return nil
+}
+
+func (r *RestorePvcReconciler) updateDecrease_InUseSnapshot(ctx context.Context, restorePvc *snapshotv1beta1.RestorePvc) error {
+	snapshot := &snapshotv1beta1.Snapshot{}
+	if err := r.Client.Get(ctx, client.ObjectKey{Name: restorePvc.Spec.SnapshotName, Namespace: restorePvc.Namespace}, snapshot); err != nil {
+		// If the object is not found, treat it as already deleted
+		if apierrors.IsNotFound(err) {
+			return err
+		}
+		return err
+	}
+	// update the snapshot.Spec.NumInUse --
+	if snapshot.Spec.NumInUse <= 0 {
+		return nil
+	}
+	// update the snapshot.Spec.NumInUse --
+	snapshot.Spec.NumInUse--
+
+	// Update the snapshot resource in the cluster
+	if err := r.Client.Update(ctx, snapshot); err != nil {
+		return fmt.Errorf("failed to update snapshot NumInUse: %w", err)
+	}
+
+	return nil
 }
 
 // SetupWithManager sets up the controller with the Manager.

@@ -336,7 +336,8 @@ func statusEqual(a, b snapshotv1beta1.SnapshotStatus) bool {
 		b.CreationTime != "N/A" &&
 		a.ReadyToUse == b.ReadyToUse &&
 		a.RestoreSize == b.RestoreSize &&
-		a.CreationStatus == b.CreationStatus
+		a.CreationStatus == b.CreationStatus &&
+		a.InUse == b.InUse
 }
 
 func (r *CreateSnapshotReconciler) handleSnapshotError(
@@ -393,6 +394,11 @@ func (r *CreateSnapshotReconciler) handleSnapshotSuccess(ctx context.Context,
 
 func (r *CreateSnapshotReconciler) buildSnapshotStatus(snapshot *snapshotv1beta1.Snapshot,
 	snapshotReturn snapshotv1beta1.PvSnapshotItem, creationStatus string) snapshotv1beta1.SnapshotStatus {
+	inUse := false
+
+	if snapshot.Spec.NumInUse > 0 {
+		inUse = true
+	}
 	return snapshotv1beta1.SnapshotStatus{
 		SourcePvcName:           snapshot.Spec.PvcName,
 		SnapshotName:            snapshot.Name,
@@ -404,6 +410,7 @@ func (r *CreateSnapshotReconciler) buildSnapshotStatus(snapshot *snapshotv1beta1
 		RestoreSize:             snapshotReturn.RestoreSize,
 		CreationStatus:          creationStatus,
 		SnapshotType:            snapshot.Spec.SnapshotType,
+		InUse:                   inUse,
 	}
 }
 

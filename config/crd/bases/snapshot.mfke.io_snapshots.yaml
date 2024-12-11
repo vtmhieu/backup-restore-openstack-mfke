@@ -40,6 +40,9 @@ spec:
     - jsonPath: .status.restoreSize
       name: restoreSize
       type: string
+    - jsonPath: .status.inUse
+      name: inUse
+      type: boolean
     name: v1beta1
     schema:
       openAPIV3Schema:
@@ -67,6 +70,8 @@ spec:
             properties:
               namespace:
                 type: string
+              numInUse:
+                type: integer
               pvcName:
                 type: string
               snapshotName:
@@ -150,6 +155,8 @@ spec:
                 type: string
               creationTime:
                 type: string
+              inUse:
+                type: boolean
               namespace:
                 type: string
               pvcName:
