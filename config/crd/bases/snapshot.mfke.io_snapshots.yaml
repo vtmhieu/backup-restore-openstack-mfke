@@ -40,6 +40,9 @@ spec:
     - jsonPath: .status.restoreSize
       name: restoreSize
       type: string
+    - jsonPath: .status.inUse
+      name: inUse
+      type: boolean
     name: v1beta1
     schema:
       openAPIV3Schema:

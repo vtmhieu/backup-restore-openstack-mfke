@@ -58,7 +58,7 @@ type SnapshotStatus struct {
 // +kubebuilder:printcolumn:name="readyToUse",type=boolean,JSONPath=`.status.readyToUse`
 // +kubebuilder:printcolumn:name="snapshotType",type=string,JSONPath=`.status.snapshotType`
 // +kubebuilder:printcolumn:name="restoreSize",type=string,JSONPath=`.status.restoreSize`
-// +kubebuilder:printcolumn:name="inUse",type=boolean,JSONPath=`.status.restoreSize`
+// +kubebuilder:printcolumn:name="inUse",type=boolean,JSONPath=`.status.inUse`
 
 // Snapshot is the Schema for the snapshots API
 type Snapshot struct {
