@@ -67,6 +67,8 @@ spec:
             properties:
               namespace:
                 type: string
+              numInUse:
+                type: integer
               pvcName:
                 type: string
               snapshotName:
@@ -150,6 +152,8 @@ spec:
                 type: string
               creationTime:
                 type: string
+              inUse:
+                type: boolean
               namespace:
                 type: string
               pvcName:

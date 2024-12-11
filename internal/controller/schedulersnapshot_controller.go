@@ -422,6 +422,9 @@ func (r *SchedulerSnapshotReconciler) ReconcileScheduleSnapshot(
 
 							// Compare duration with maxDuration
 							if duration >= maxDuration*unitDuration {
+								if snapshot.Spec.NumInUse > 0 {
+									continue
+								}
 								if err := newDeleteSnapshot(ctx, c, snapshot.Name, snapshot.Namespace, snapshot.Spec.PvcName, snapshot.Spec.Namespace); err != nil {
 									klog.Errorf("Unable to delete snapshot %s in namespace %s due to exceed Retention", snapshot.Status.SnapshotName, pvcSnapshotClass.Namespace)
 								} else {
@@ -491,6 +494,7 @@ func newCreateSnapshot(ctx context.Context, c client.Client, pvcName string, sho
 			PvcName:      pvcName,
 			Namespace:    shootNamespace,
 			SnapshotType: snapshotType,
+			NumInUse:     0,
 		},
 	}
 	if err := c.Create(ctx, snapshot); err != nil {

@@ -237,8 +237,6 @@ func (r *PvSnapshotReconciler) getPvSnapshotStatus(dynamicClienSet *dynamic.Dyna
 		}
 		if len(resp) != 0 {
 			pvSnapshotStatus.Items = append(pvSnapshotStatus.Items, resp...)
-		} else {
-			klog.Infof("There is no PV Snapshot in ns: %s", ns)
 		}
 	}
 	return pvSnapshotStatus, nil

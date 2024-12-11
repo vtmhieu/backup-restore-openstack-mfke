@@ -192,6 +192,8 @@ spec:
                       type: string
                     creationTime:
                       type: string
+                    inUse:
+                      type: boolean
                     namespace:
                       type: string
                     pvcName:
@@ -291,6 +293,8 @@ spec:
                       type: string
                     creationTime:
                       type: string
+                    inUse:
+                      type: boolean
                     namespace:
                       type: string
                     pvcName:

@@ -513,8 +513,6 @@ func getPvSnapshotListPerNamespace(dynamicClienSet *dynamic.DynamicClient, names
 	}
 	if len(resp) != 0 {
 		snapshotList = append(snapshotList, resp...)
-	} else {
-		klog.Infof("There is no PV Snapshot in ns: %s", namespace)
 	}
 
 	return snapshotList, nil
@@ -561,8 +559,6 @@ func getPvSnapshotStatus(dynamicClienSet *dynamic.DynamicClient, namespaceList [
 				}
 				pvSnapshotStatus = append(pvSnapshotStatus, addSnapshot)
 			}
-		} else {
-			klog.Infof("There is no PV Snapshot in ns: %s", ns)
 		}
 	}
 	return pvSnapshotStatus, nil
