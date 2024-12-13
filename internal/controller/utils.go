@@ -518,18 +518,28 @@ func getPvSnapshotListPerNamespace(dynamicClienSet *dynamic.DynamicClient, names
 	return snapshotList, nil
 }
 
-func getSeedSnapshotList(ctx context.Context, c client.Client) (snapshotv1beta1.SnapshotList, error) {
+func getSeedSnapshotList(ctx context.Context, c client.Client, namespace string) (snapshotv1beta1.SnapshotList, error) {
 	snapshotList := &snapshotv1beta1.SnapshotList{}
-	if err := c.List(ctx, snapshotList); err != nil {
+	// Use client.InNamespace to filter by namespace
+	listOptions := []client.ListOption{
+		client.InNamespace(namespace),
+	}
+	if err := c.List(ctx, snapshotList, listOptions...); err != nil {
 		klog.Errorf("Error listing Snapshots: %s", err)
 		return *snapshotList, err
 	}
 	return *snapshotList, nil
 }
 
-func getSeedRestoredPvcList(ctx context.Context, c client.Client) (snapshotv1beta1.RestorePvcList, error) {
+func getSeedRestoredPvcList(ctx context.Context, c client.Client, namespace string) (snapshotv1beta1.RestorePvcList, error) {
 	restoreList := &snapshotv1beta1.RestorePvcList{}
-	if err := c.List(ctx, restoreList); err != nil {
+
+	// Use client.InNamespace to filter by namespace
+	listOptions := []client.ListOption{
+		client.InNamespace(namespace),
+	}
+
+	if err := c.List(ctx, restoreList, listOptions...); err != nil {
 		klog.Errorf("Error listing Snapshots: %s", err)
 		return *restoreList, nil
 	}

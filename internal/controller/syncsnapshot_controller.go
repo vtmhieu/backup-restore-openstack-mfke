@@ -76,7 +76,7 @@ func (r *SyncSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		controllerutil.AddFinalizer(syncSnapshot, SyncSnapshotFinalizerName)
 
 		if err := r.Update(ctx, syncSnapshot); err != nil {
-			log.Error(err, "Failed to update restorePvc controller finalizer")
+			log.Error(err, "Failed to update syncSnapshot controller finalizer")
 			return ctrl.Result{}, err
 		}
 
@@ -220,7 +220,7 @@ func (r *SyncSnapshotReconciler) ReconcileSyncSnapshot(ctx context.Context,
 	klog.Infof("List of namespace %v", namespaceList)
 
 	// get list of snapshot in seed and shoot
-	seedSnapshotList, err := getSeedSnapshotList(ctx, c)
+	seedSnapshotList, err := getSeedSnapshotList(ctx, c, namespace)
 	if err != nil {
 		klog.Error("Unable to get seed Snapshot List", err)
 		return missingSnapshots, extraSnapshots, fmt.Errorf("unable to get pvc list in seed %s: %v", clusterName, err)
@@ -305,7 +305,7 @@ func (r *SyncSnapshotReconciler) ReconcileSyncRestore(ctx context.Context,
 
 	// get the list of Restore PVC -> check if not exist -> delete object
 	// if exist -> update status
-	restorePvcList, err := getSeedRestoredPvcList(ctx, c)
+	restorePvcList, err := getSeedRestoredPvcList(ctx, c, namespace)
 	if err != nil {
 		return err
 	}
