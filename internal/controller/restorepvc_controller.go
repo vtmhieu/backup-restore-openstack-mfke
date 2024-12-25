@@ -111,6 +111,11 @@ func (r *RestorePvcReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	// define the finalizer for PVC
 	if restorePvc.ObjectMeta.DeletionTimestamp.IsZero() {
 		returnRestorePvc, err := r.ReconcileRestorePvc(ctx, r.Client, restorePvc)
+
+		if err := r.removeRestoreAnnotation(ctx, restorePvc); err != nil {
+			log.Error(err, "Failed to remove annotation for reconcile restorePvc")
+		}
+
 		if err != nil {
 			klog.Info("Reconcile restorePvc Failed")
 			return r.handleRestorePvcError(ctx, restorePvc, returnRestorePvc, err)
@@ -266,6 +271,19 @@ func (r *RestorePvcReconciler) ReconcileRestorePvc(ctx context.Context, c client
 	return RestorePvcReturn, nil
 }
 
+func (r *RestorePvcReconciler) removeRestoreAnnotation(ctx context.Context, restorePvc *snapshotv1beta1.RestorePvc) error {
+
+	if restorePvc.Annotations[RestorePVCEnabledAnnotation] == "true" {
+		delete(restorePvc.Annotations, RestorePVCEnabledAnnotation)
+
+		if err := r.Update(ctx, restorePvc); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // restorePvc function create PVC based on the given information above, return err if not creat successfully
 func (r *RestorePvcReconciler) restorePvc(shootClientSet *kubernetes.Clientset, restorePvcName string, sourceNamespace string, destinationNamespace string, snapshotName string, accessModes []corev1.PersistentVolumeAccessMode, resourceSize string) (snapshotv1beta1.RestorePvcStatus, error) {
 
@@ -379,7 +397,7 @@ func (r *RestorePvcReconciler) handleRestorePvcError(ctx context.Context, restor
 	newStatus := r.buildRestorePvcStatus(restorePvc, returnRestorePvc, "Failed")
 	if err := r.updateRestoreStatus(ctx, restorePvc, newStatus); err != nil {
 		klog.Error(err, "Failed to update restorePvc CRD status")
-		return ctrl.Result{}, err
+		return ctrl.Result{RequeueAfter: requeueTime}, err
 	}
 
 	meta.SetStatusCondition(&restorePvc.Status.Conditions, metav1.Condition{

@@ -546,6 +546,19 @@ func getSeedRestoredPvcList(ctx context.Context, c client.Client, namespace stri
 	return *restoreList, nil
 }
 
+func getPvcList(ctx context.Context, c client.Client, namespace string) (snapshotv1beta1.PvcList, error) {
+	pvcList := &snapshotv1beta1.PvcList{}
+	// Use client.InNamespace to filter by namespace
+	listOptions := []client.ListOption{
+		client.InNamespace(namespace),
+	}
+	if err := c.List(ctx, pvcList, listOptions...); err != nil {
+		klog.Errorf("Error listing Snapshots: %s", err)
+		return *pvcList, nil
+	}
+	return *pvcList, nil
+}
+
 func getPvSnapshotStatus(dynamicClienSet *dynamic.DynamicClient, namespaceList []string) ([]snapshotv1beta1.SnapshotStatus, error) {
 	pvSnapshotStatus := []snapshotv1beta1.SnapshotStatus{}
 	for _, ns := range namespaceList {

@@ -1,5 +1,7 @@
 package controller
 
+import "time"
+
 const (
 	PvcFinalizerName          = "snapshotv1beta1.mfke.io/pvc"
 	PvSnapshotFinalizerName   = "snapshotv1beta1.mfke.io/pvsnapshot"
@@ -31,4 +33,6 @@ const (
 	Days    = "days"
 
 	LabelRole = "snapshotv1beta1.mfke.io/role"
+
+	requeueTime = 5 * time.Minute
 )

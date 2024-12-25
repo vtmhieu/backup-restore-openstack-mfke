@@ -346,7 +346,7 @@ func (r *CreateSnapshotReconciler) handleSnapshotError(
 	newStatus := r.buildSnapshotStatus(snapshot, snapshotReturn, "Failed")
 	if err := r.updateSnapshotStatus(ctx, snapshot, newStatus); err != nil {
 		klog.Error(err, "Failed to update snapshot CRD status")
-		return ctrl.Result{}, err
+		return ctrl.Result{RequeueAfter: 2 * time.Minute}, err
 	}
 
 	meta.SetStatusCondition(
@@ -360,7 +360,7 @@ func (r *CreateSnapshotReconciler) handleSnapshotError(
 
 	if err := r.Status().Update(ctx, snapshot); err != nil {
 		klog.Error(err, "Failed to update Snapshot status condition")
-		return ctrl.Result{}, err
+		return ctrl.Result{RequeueAfter: 2 * time.Minute}, err
 	}
 
 	return ctrl.Result{}, err

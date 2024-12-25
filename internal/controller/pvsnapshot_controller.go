@@ -130,7 +130,7 @@ func (r *PvSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			return ctrl.Result{}, err
 		}
 
-		return ctrl.Result{RequeueAfter: 20 * time.Minute}, nil
+		return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
 	} else {
 		meta.SetStatusCondition(&pvSnapshot.Status.Conditions, metav1.Condition{Type: "Degraded",
 			Status: metav1.ConditionUnknown, Reason: "Finalizing",

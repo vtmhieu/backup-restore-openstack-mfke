@@ -125,6 +125,10 @@ func (r *SyncSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			//return r.updateStatusWithError(ctx, syncSnapshot, missingSnapshots, extraSnapshots, err, "Failed to Sync Restore Pvc")
 		}
 
+		if err = r.ReconcilePvc(ctx, r.Client, syncSnapshot); err != nil {
+			log.Error(err, "Failed to Sync Pvc List")
+		}
+
 		if err = r.removeSyncAnnotation(ctx, syncSnapshot); err != nil {
 			log.Error(err, "Failed to remove Annotation for sync snapshot")
 			return r.updateStatusWithError(ctx, syncSnapshot, missingSnapshots, extraSnapshots, err, "Failed to remove Annotation for sync snapshot")
@@ -141,7 +145,7 @@ func (r *SyncSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			log.Error(err, "Failed to update PVSnapshot crds status")
 			return ctrl.Result{}, err
 		}
-		return ctrl.Result{RequeueAfter: 10 * time.Minute}, nil
+		return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
 
 	} else {
 		meta.SetStatusCondition(&syncSnapshot.Status.Conditions,
@@ -284,6 +288,25 @@ func (r *SyncSnapshotReconciler) ReconcileSyncSnapshot(ctx context.Context,
 	return missingSnapshots, extraSnapshots, nil
 }
 
+func (r *SyncSnapshotReconciler) ReconcilePvc(ctx context.Context, c client.Client, syncSnapshot *snapshotv1beta1.SyncSnapshot) error {
+	// get namespace in seed
+	namespace := syncSnapshot.Namespace
+
+	pvcListObj, err := getPvcList(ctx, c, namespace)
+	if err != nil {
+		return err
+	}
+
+	for _, pvcList := range pvcListObj.Items {
+		err := reconcilePvcList(ctx, c, pvcList, PvcReconcileAnnotation, "true")
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (r *SyncSnapshotReconciler) ReconcileSyncRestore(ctx context.Context,
 	c client.Client, syncSnapshot *snapshotv1beta1.SyncSnapshot) error {
 
@@ -318,7 +341,7 @@ func (r *SyncSnapshotReconciler) ReconcileSyncRestore(ctx context.Context,
 		}
 
 		if pvcExist {
-			err := reconcileRestoredPvc(ctx, c, restorePvc, SyncSnapshotReconcilerAnnotation, "true")
+			err := reconcileRestoredPvc(ctx, c, restorePvc, RestorePVCEnabledAnnotation, "true")
 			if err != nil {
 				return err // Return the error if something goes wrong during reconciliation
 			}
@@ -363,6 +386,39 @@ func (r *SyncSnapshotReconciler) newDeleteSnapshot(ctx context.Context, c client
 		},
 	}
 	if err := c.Delete(ctx, snapshot); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func reconcilePvcList(
+	ctx context.Context,
+	c client.Client,
+	pvcList snapshotv1beta1.Pvc,
+	annotationKey string,
+	annotationValue string) error {
+	// Retrieve the existing RestorePvc object
+	pvc := &snapshotv1beta1.Pvc{}
+	if err := c.Get(ctx, client.ObjectKey{Name: pvcList.Name, Namespace: pvcList.Namespace}, pvc); err != nil {
+		// If the object is not found, treat it as already deleted
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+
+	// Create a patch object to modify the annotations
+	patch := client.MergeFrom(pvc.DeepCopy())
+
+	// Update the annotations
+	if pvc.Annotations == nil {
+		pvc.Annotations = make(map[string]string)
+	}
+	pvc.Annotations[annotationKey] = annotationValue
+
+	// Apply the patch
+	if err := c.Patch(ctx, pvc, patch); err != nil {
 		return err
 	}
 
