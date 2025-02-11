@@ -1,0 +1,53 @@
+{
+    "apiVersion": "snapshot.mfke.io/v1beta1",
+    "kind": "CreateKubeSnapshot",
+    "metadata": {
+        "creationTimestamp": "2024-09-09T08:46:00Z",
+        "generation": 1,
+        "labels": {
+            "app.kubernetes.io/managed-by": "kustomize",
+            "app.kubernetes.io/name": "backup-restore-openstack-mfke"
+        },
+        "managedFields": [
+            {
+                "apiVersion": "snapshot.mfke.io/v1beta1",
+                "fieldsType": "FieldsV1",
+                "fieldsV1": {
+                    "f:metadata": {
+                        "f:labels": {
+                            ".": {},
+                            "f:app.kubernetes.io/managed-by": {},
+                            "f:app.kubernetes.io/name": {}
+                        }
+                    },
+                    "f:spec": {
+                        ".": {},
+                        "f:backupTargets": {
+                            ".": {},
+                            "f:includeClusterResources": {},
+                            "f:includeNamespaces": {}
+                        },
+                        "f:runCounter": {}
+                    }
+                },
+                "manager": "PostmanRuntime",
+                "operation": "Update",
+                "time": "2024-09-09T08:46:00Z"
+            }
+        ],
+        "name": "fke-configsnapshot-28337183",
+        "namespace": "fke-hungbq8-lno5d5yc",
+        "resourceVersion": "266888144",
+        "uid": "0979a94f-9b07-4c9d-b324-dd8a77a5d836"
+    },
+    "spec": {
+        "backupTargets": {
+            "includeClusterResources": true,
+            "includeNamespaces": [
+                "default",
+                "kube-system"
+            ]
+        },
+        "runCounter": 1
+    }
+}

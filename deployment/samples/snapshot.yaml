@@ -1,0 +1,14 @@
+apiVersion: snapshot.mfke.io/v1beta1
+kind: Snapshot
+metadata:
+  labels:
+    app.kubernetes.io/name: snapshot
+    app.kubernetes.io/instance: snapshot-sample
+    app.kubernetes.io/part-of: backup-restore-openstack-mfke
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: backup-restore-openstack-mfke
+  name: test-pvc-default-2408201451 # SnapshotName = PvcName + "-" + namespace + "-" + time (time = YYMMDDhhmm)
+spec:
+  pvcName: test-pvc
+  namespace: default
+  snapshotType: Manually

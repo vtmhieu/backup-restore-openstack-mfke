@@ -1,0 +1,114 @@
+{
+    "apiVersion": "snapshot.mfke.io/v1beta1",
+    "items": [
+        {
+            "apiVersion": "snapshot.mfke.io/v1beta1",
+            "kind": "Snapshot",
+            "metadata": {
+                "creationTimestamp": "2024-09-09T06:30:11Z",
+                "finalizers": [
+                    "snapshotv1beta1.mfke.io/snapshot"
+                ],
+                "generation": 1,
+                "labels": {
+                    "app.kubernetes.io/created-by": "backup-restore-openstack-mfke",
+                    "app.kubernetes.io/instance": "snapshot-sample",
+                    "app.kubernetes.io/managed-by": "kustomize",
+                    "app.kubernetes.io/name": "snapshot-sample",
+                    "app.kubernetes.io/part-of": "backup-restore-openstack-mfke"
+                },
+                "managedFields": [
+                    {
+                        "apiVersion": "snapshot.mfke.io/v1beta1",
+                        "fieldsType": "FieldsV1",
+                        "fieldsV1": {
+                            "f:metadata": {
+                                "f:labels": {
+                                    ".": {},
+                                    "f:app.kubernetes.io/created-by": {},
+                                    "f:app.kubernetes.io/instance": {},
+                                    "f:app.kubernetes.io/managed-by": {},
+                                    "f:app.kubernetes.io/name": {},
+                                    "f:app.kubernetes.io/part-of": {}
+                                }
+                            },
+                            "f:spec": {
+                                ".": {},
+                                "f:namespace": {},
+                                "f:pvcName": {},
+                                "f:snapshotType": {}
+                            }
+                        },
+                        "manager": "PostmanRuntime",
+                        "operation": "Update",
+                        "time": "2024-09-09T06:30:11Z"
+                    },
+                    {
+                        "apiVersion": "snapshot.mfke.io/v1beta1",
+                        "fieldsType": "FieldsV1",
+                        "fieldsV1": {
+                            "f:metadata": {
+                                "f:finalizers": {
+                                    ".": {},
+                                    "v:\"snapshotv1beta1.mfke.io/snapshot\"": {}
+                                }
+                            },
+                            "f:status": {
+                                ".": {},
+                                "f:conditions": {},
+                                "f:creationStatus": {},
+                                "f:creationTime": {},
+                                "f:namespace": {},
+                                "f:pvcName": {},
+                                "f:readyToUse": {},
+                                "f:restoreSize": {},
+                                "f:snapshotContentName": {},
+                                "f:snapshotName": {},
+                                "f:snapshotType": {},
+                                "f:volumeSnapshotClassName": {}
+                            }
+                        },
+                        "manager": "manager",
+                        "operation": "Update",
+                        "time": "2024-09-09T06:30:13Z"
+                    }
+                ],
+                "name": "testtest",
+                "namespace": "fke-hungbq8-lno5d5yc",
+                "resourceVersion": "266695076",
+                "uid": "f460dca3-515d-41a3-a3c9-a899b427c88c"
+            },
+            "spec": {
+                "namespace": "default",
+                "pvcName": "wp-pv-claim",
+                "snapshotType": "Manually"
+            },
+            "status": {
+                "conditions": [
+                    {
+                        "lastTransitionTime": "2024-09-09T06:30:13Z",
+                        "message": "Starting reconciliation",
+                        "reason": "Reconciling",
+                        "status": "Unknown",
+                        "type": "Available"
+                    }
+                ],
+                "creationStatus": "Succeeded",
+                "creationTime": "2024-09-09T13:30:12+07:00",
+                "namespace": "default",
+                "pvcName": "wp-pv-claim",
+                "readyToUse": true,
+                "restoreSize": "20Gi",
+                "snapshotContentName": "snapcontent-07e4c6ce-44f2-4c82-aa06-6420472018fe",
+                "snapshotName": "testtest",
+                "snapshotType": "Manually",
+                "volumeSnapshotClassName": "csi-cinder-snapclass"
+            }
+        }
+    ],
+    "kind": "SnapshotList",
+    "metadata": {
+        "continue": "",
+        "resourceVersion": "266697699"
+    }
+}

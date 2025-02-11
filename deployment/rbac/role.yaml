@@ -1,0 +1,236 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: manager-role
+rules:
+  - apiGroups:
+      - snapshot.mfke.io
+    resources:
+      - pvcs
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - snapshot.mfke.io
+    resources:
+      - pvcs/finalizers
+    verbs:
+      - update
+  - apiGroups:
+      - snapshot.mfke.io
+    resources:
+      - pvcs/status
+    verbs:
+      - get
+      - patch
+      - update
+  - apiGroups:
+      - snapshot.mfke.io
+    resources:
+      - pvsnapshots
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - snapshot.mfke.io
+    resources:
+      - pvsnapshots/finalizers
+    verbs:
+      - update
+  - apiGroups:
+      - snapshot.mfke.io
+    resources:
+      - pvsnapshots/status
+    verbs:
+      - get
+      - patch
+      - update
+  - apiGroups:
+      - snapshot.mfke.io
+    resources:
+      - restorepvcs
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - snapshot.mfke.io
+    resources:
+      - restorepvcs/finalizers
+    verbs:
+      - update
+  - apiGroups:
+      - snapshot.mfke.io
+    resources:
+      - restorepvcs/status
+    verbs:
+      - get
+      - patch
+      - update
+  - apiGroups:
+      - snapshot.mfke.io
+    resources:
+      - schedulersnapshots
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - snapshot.mfke.io
+    resources:
+      - schedulersnapshots/finalizers
+    verbs:
+      - update
+  - apiGroups:
+      - snapshot.mfke.io
+    resources:
+      - schedulersnapshots/status
+    verbs:
+      - get
+      - patch
+      - update
+  - apiGroups:
+      - snapshot.mfke.io
+    resources:
+      - snapshots
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - snapshot.mfke.io
+    resources:
+      - snapshots/finalizers
+    verbs:
+      - update
+  - apiGroups:
+      - snapshot.mfke.io
+    resources:
+      - snapshots/status
+    verbs:
+      - get
+      - patch
+      - update
+  - apiGroups:
+      - snapshot.mfke.io
+    resources:
+      - syncsnapshots
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - snapshot.mfke.io
+    resources:
+      - syncsnapshots/finalizers
+    verbs:
+      - update
+  - apiGroups:
+      - snapshot.mfke.io
+    resources:
+      - syncsnapshots/status
+    verbs:
+      - get
+      - patch
+      - update
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+  - apiGroups:
+      - ""
+    resources:
+      - namespaces
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+  - apiGroups:
+      - snapshot.mfke.io
+    resources:
+      - createkubesnapshots
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - snapshot.mfke.io
+    resources:
+      - createkubesnapshots/finalizers
+    verbs:
+      - update
+  - apiGroups:
+      - snapshot.mfke.io
+    resources:
+      - createkubesnapshots/status
+    verbs:
+      - get
+      - patch
+      - update
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete

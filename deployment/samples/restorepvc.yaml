@@ -1,0 +1,17 @@
+apiVersion: snapshot.mfke.io/v1beta1
+kind: RestorePvc
+metadata:
+  labels:
+    app.kubernetes.io/name: restorepvc
+    app.kubernetes.io/instance: restorepvc-sample
+    app.kubernetes.io/part-of: backup-restore-openstack-mfke
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: backup-restore-openstack-mfke
+  name: restorepvc-sample
+spec:
+  snapshotName: test-snapshot # name of the snapshot to restore
+  sourceNamespace: default # namespace of where the snapshot is located
+  desNamespace: test # namespace of where the pvc to restore
+  accessModes:
+  - ReadWriteOnce
+  storage: 20Gi

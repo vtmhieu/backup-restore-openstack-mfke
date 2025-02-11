@@ -1,0 +1,299 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.14.0
+  name: createkubesnapshots.snapshot.mfke.io
+spec:
+  group: snapshot.mfke.io
+  names:
+    kind: CreateKubeSnapshot
+    listKind: CreateKubeSnapshotList
+    plural: createkubesnapshots
+    singular: createkubesnapshot
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.backupStatus
+      name: backupStatus
+      type: string
+    - jsonPath: .status.message
+      name: message
+      type: string
+    - jsonPath: .status.reason
+      name: reason
+      type: string
+    - jsonPath: .status.runCounter
+      name: runCounter
+      type: integer
+    - jsonPath: .status.ongoingRun.backupStatus
+      name: ongoingRun
+      type: string
+    - jsonPath: .status.ongoingRun.startedAt
+      name: ongoingRunStartedAt
+      type: string
+    - jsonPath: .status.lastSuccessfulRun.backupStatus
+      name: lastSuccessfulRun
+      type: string
+    - jsonPath: .status.lastSuccessfulRun.startedAt
+      name: lastSuccessfulRunStartedAt
+      type: string
+    - jsonPath: .status.lastSuccessfulRun.finishedAt
+      name: lastSuccessfulRunFinishedAt
+      type: string
+    - jsonPath: .status.lastFailedRun.backupStatus
+      name: lastFailedRun
+      type: string
+    - jsonPath: .status.lastFailedRun.startedAt
+      name: lastFailedRunStartedAt
+      type: string
+    - jsonPath: .status.lastFailedRun.finishedAt
+      name: lastFailedRunFinishedAt
+      type: string
+    name: v1beta1
+    schema:
+      openAPIV3Schema:
+        description: CreateKubeSnapshot is the Schema for the createkubesnapshots
+          API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: CreateKubeSnapshotSpec defines the desired state of CreateKubeSnapshot
+            properties:
+              backupTargets:
+                description: BackupTargets is the list of backup targets to use for
+                  the snapshot.
+                properties:
+                  includeClusterResources:
+                    description: |-
+                      IncludeClusterResources, if true, will include cluster-wide resources in
+                      the snapshot. Otherwise, only namespace-scoped resources will be included.
+                    type: boolean
+                  includeNamespaces:
+                    description: |-
+                      IncludeNamespaces is the list of namespaces to include in the snapshot.
+                      If nil, all namespaces will be included. If empty, no namespaces will be
+                      included.
+                    items:
+                      type: string
+                    type: array
+                type: object
+              runCounter:
+                description: |-
+                  RunCounter is the counter for the run of the backup. This should be
+                  incremented for each run of the backup.
+
+
+                  Note that the controller will not do anything until this counter is
+                  higher than the counter in the status, so while you can set this to any
+                  value, it will not have any effect until you properly increment it.
+                format: int32
+                type: integer
+            required:
+            - backupTargets
+            - runCounter
+            type: object
+          status:
+            description: CreateKubeSnapshotStatus defines the observed state of CreateKubeSnapshot
+            properties:
+              backupStatus:
+                description: BackupStatus is the current status of the snapshot.
+                type: string
+              lastFailedRunStatus:
+                description: |-
+                  LastFailedRun is the status of the last failed run of the backup.
+                  It is nil if no failed runs have been made.
+                properties:
+                  backupPodMessage:
+                    description: BackupPodMessage is the message from the backup pod,
+                      if any.
+                    type: string
+                  backupPodReason:
+                    description: BackupPodReason is the reason for the backup pod
+                      status, if any.
+                    type: string
+                  backupStatus:
+                    description: BackupStatus is the current status of the snapshot.
+                    type: string
+                  finishedAt:
+                    description: |-
+                      FinishedAt is the time at which the job finished.
+                      Internally, this is the time that the kube-dump container has ended.
+                      This is nil if the job has not yet finished.
+                    format: date-time
+                    type: string
+                  kubeDumpMessage:
+                    description: KubeDumpMessage is the message from the kube-dump
+                      container, if any.
+                    type: string
+                  kubeDumpReason:
+                    description: KubeDumpReason is the reason for the kube-dump container
+                      status, if any.
+                    type: string
+                  kubeDumpRestarts:
+                    description: |-
+                      KubeDumpRestarts is the number of restarts of the kube-dump container.
+                      This count should be zero for a successful backup.
+                    format: int32
+                    type: integer
+                  kubeDumpStatus:
+                    description: KubeDumpStatus is the status of the kube-dump container.
+                    type: string
+                  startedAt:
+                    description: |-
+                      StartedAt is the time at which the job started.
+                      Internally, this is the time that the kube-dump pod was created, not the
+                      time that the kube-dump container has ended.
+                    format: date-time
+                    type: string
+                required:
+                - backupStatus
+                - kubeDumpRestarts
+                - kubeDumpStatus
+                - startedAt
+                type: object
+              lastSuccessfulRun:
+                description: |-
+                  LastSuccessfulRun is the status of the last successful run of the backup.
+                  It is nil if no successful runs have been made.
+                properties:
+                  backupPodMessage:
+                    description: BackupPodMessage is the message from the backup pod,
+                      if any.
+                    type: string
+                  backupPodReason:
+                    description: BackupPodReason is the reason for the backup pod
+                      status, if any.
+                    type: string
+                  backupStatus:
+                    description: BackupStatus is the current status of the snapshot.
+                    type: string
+                  finishedAt:
+                    description: |-
+                      FinishedAt is the time at which the job finished.
+                      Internally, this is the time that the kube-dump container has ended.
+                      This is nil if the job has not yet finished.
+                    format: date-time
+                    type: string
+                  kubeDumpMessage:
+                    description: KubeDumpMessage is the message from the kube-dump
+                      container, if any.
+                    type: string
+                  kubeDumpReason:
+                    description: KubeDumpReason is the reason for the kube-dump container
+                      status, if any.
+                    type: string
+                  kubeDumpRestarts:
+                    description: |-
+                      KubeDumpRestarts is the number of restarts of the kube-dump container.
+                      This count should be zero for a successful backup.
+                    format: int32
+                    type: integer
+                  kubeDumpStatus:
+                    description: KubeDumpStatus is the status of the kube-dump container.
+                    type: string
+                  startedAt:
+                    description: |-
+                      StartedAt is the time at which the job started.
+                      Internally, this is the time that the kube-dump pod was created, not the
+                      time that the kube-dump container has ended.
+                    format: date-time
+                    type: string
+                required:
+                - backupStatus
+                - kubeDumpRestarts
+                - kubeDumpStatus
+                - startedAt
+                type: object
+              message:
+                description: Message is a message from the controller about the status
+                  of the backup.
+                type: string
+              ongoingRun:
+                description: |-
+                  OngoingRun is the status of the current run of the backup.
+                  It is nil if no runs are currently in progress.
+                properties:
+                  backupPodMessage:
+                    description: BackupPodMessage is the message from the backup pod,
+                      if any.
+                    type: string
+                  backupPodReason:
+                    description: BackupPodReason is the reason for the backup pod
+                      status, if any.
+                    type: string
+                  backupStatus:
+                    description: BackupStatus is the current status of the snapshot.
+                    type: string
+                  finishedAt:
+                    description: |-
+                      FinishedAt is the time at which the job finished.
+                      Internally, this is the time that the kube-dump container has ended.
+                      This is nil if the job has not yet finished.
+                    format: date-time
+                    type: string
+                  kubeDumpMessage:
+                    description: KubeDumpMessage is the message from the kube-dump
+                      container, if any.
+                    type: string
+                  kubeDumpReason:
+                    description: KubeDumpReason is the reason for the kube-dump container
+                      status, if any.
+                    type: string
+                  kubeDumpRestarts:
+                    description: |-
+                      KubeDumpRestarts is the number of restarts of the kube-dump container.
+                      This count should be zero for a successful backup.
+                    format: int32
+                    type: integer
+                  kubeDumpStatus:
+                    description: KubeDumpStatus is the status of the kube-dump container.
+                    type: string
+                  startedAt:
+                    description: |-
+                      StartedAt is the time at which the job started.
+                      Internally, this is the time that the kube-dump pod was created, not the
+                      time that the kube-dump container has ended.
+                    format: date-time
+                    type: string
+                required:
+                - backupStatus
+                - kubeDumpRestarts
+                - kubeDumpStatus
+                - startedAt
+                type: object
+              reason:
+                description: Reason is the reason for the backup status, if any.
+                type: string
+              runCounter:
+                description: |-
+                  RunCounter is the counter for the run of the backup. This should be
+                  incremented for each run of the backup.
+                format: int32
+                type: integer
+            required:
+            - backupStatus
+            - runCounter
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

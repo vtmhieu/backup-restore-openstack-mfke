@@ -1,0 +1,64 @@
+{
+    "apiVersion": "snapshot.mfke.io/v1beta1",
+    "kind": "RestorePvc",
+    "metadata": {
+        "annotations": {
+            "snapshotv1beta1.mfke.io/restorePvc-enabled": "true"
+        },
+        "creationTimestamp": "2024-09-09T07:27:43Z",
+        "generation": 1,
+        "labels": {
+            "app.kubernetes.io/created-by": "backup-restore-openstack-mfke",
+            "app.kubernetes.io/instance": "restorepvc-sample",
+            "app.kubernetes.io/managed-by": "kustomize",
+            "app.kubernetes.io/name": "restorepvc",
+            "app.kubernetes.io/part-of": "backup-restore-openstack-mfke"
+        },
+        "managedFields": [
+            {
+                "apiVersion": "snapshot.mfke.io/v1beta1",
+                "fieldsType": "FieldsV1",
+                "fieldsV1": {
+                    "f:metadata": {
+                        "f:annotations": {
+                            ".": {},
+                            "f:snapshotv1beta1.mfke.io/restorePvc-enabled": {}
+                        },
+                        "f:labels": {
+                            ".": {},
+                            "f:app.kubernetes.io/created-by": {},
+                            "f:app.kubernetes.io/instance": {},
+                            "f:app.kubernetes.io/managed-by": {},
+                            "f:app.kubernetes.io/name": {},
+                            "f:app.kubernetes.io/part-of": {}
+                        }
+                    },
+                    "f:spec": {
+                        ".": {},
+                        "f:accessModes": {},
+                        "f:desNamespace": {},
+                        "f:snapshotName": {},
+                        "f:sourceNamespace": {},
+                        "f:storage": {}
+                    }
+                },
+                "manager": "PostmanRuntime",
+                "operation": "Update",
+                "time": "2024-09-09T07:27:43Z"
+            }
+        ],
+        "name": "test-restore",
+        "namespace": "fke-hungbq8-lno5d5yc",
+        "resourceVersion": "266773138",
+        "uid": "63cc9d8c-4871-44c5-961a-bdb8c855c87f"
+    },
+    "spec": {
+        "accessModes": [
+            "ReadWriteOnce"
+        ],
+        "desNamespace": "default",
+        "snapshotName": "testtest",
+        "sourceNamespace": "default",
+        "storage": "20Gi"
+    }
+}

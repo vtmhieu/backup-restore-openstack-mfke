@@ -1,0 +1,51 @@
+{
+    "apiVersion": "snapshot.mfke.io/v1beta1",
+    "kind": "Snapshot",
+    "metadata": {
+        "creationTimestamp": "2024-09-09T06:30:11Z",
+        "generation": 1,
+        "labels": {
+            "app.kubernetes.io/created-by": "backup-restore-openstack-mfke",
+            "app.kubernetes.io/instance": "snapshot-sample",
+            "app.kubernetes.io/managed-by": "kustomize",
+            "app.kubernetes.io/name": "snapshot-sample",
+            "app.kubernetes.io/part-of": "backup-restore-openstack-mfke"
+        },
+        "managedFields": [
+            {
+                "apiVersion": "snapshot.mfke.io/v1beta1",
+                "fieldsType": "FieldsV1",
+                "fieldsV1": {
+                    "f:metadata": {
+                        "f:labels": {
+                            ".": {},
+                            "f:app.kubernetes.io/created-by": {},
+                            "f:app.kubernetes.io/instance": {},
+                            "f:app.kubernetes.io/managed-by": {},
+                            "f:app.kubernetes.io/name": {},
+                            "f:app.kubernetes.io/part-of": {}
+                        }
+                    },
+                    "f:spec": {
+                        ".": {},
+                        "f:namespace": {},
+                        "f:pvcName": {},
+                        "f:snapshotType": {}
+                    }
+                },
+                "manager": "PostmanRuntime",
+                "operation": "Update",
+                "time": "2024-09-09T06:30:11Z"
+            }
+        ],
+        "name": "testtest",
+        "namespace": "fke-hungbq8-lno5d5yc",
+        "resourceVersion": "266695036",
+        "uid": "f460dca3-515d-41a3-a3c9-a899b427c88c"
+    },
+    "spec": {
+        "namespace": "default",
+        "pvcName": "wp-pv-claim",
+        "snapshotType": "Manually"
+    }
+}

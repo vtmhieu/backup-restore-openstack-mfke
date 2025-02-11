@@ -1,0 +1,6 @@
+resources:
+- pvcs.yaml
+- restorepvcs.yaml
+- snapshots.yaml
+- schedulersnapshots.yaml
+- syncsnapshots.yaml

@@ -1,0 +1,42 @@
+{
+    "apiVersion": "snapshot.mfke.io/v1beta1",
+    "kind": "Pvc",
+    "metadata": {
+        "creationTimestamp": "2024-09-09T08:06:14Z",
+        "generation": 1,
+        "labels": {
+            "app.kubernetes.io/created-by": "backup-restore-openstack-mfke",
+            "app.kubernetes.io/instance": "pvc-sample",
+            "app.kubernetes.io/managed-by": "kustomize",
+            "app.kubernetes.io/name": "pvc",
+            "app.kubernetes.io/part-of": "backup-restore-openstack-mfke"
+        },
+        "managedFields": [
+            {
+                "apiVersion": "snapshot.mfke.io/v1beta1",
+                "fieldsType": "FieldsV1",
+                "fieldsV1": {
+                    "f:metadata": {
+                        "f:labels": {
+                            ".": {},
+                            "f:app.kubernetes.io/created-by": {},
+                            "f:app.kubernetes.io/instance": {},
+                            "f:app.kubernetes.io/managed-by": {},
+                            "f:app.kubernetes.io/name": {},
+                            "f:app.kubernetes.io/part-of": {}
+                        }
+                    },
+                    "f:spec": {}
+                },
+                "manager": "PostmanRuntime",
+                "operation": "Update",
+                "time": "2024-09-09T08:06:14Z"
+            }
+        ],
+        "name": "pvc-sample",
+        "namespace": "fke-hungbq8-lno5d5yc",
+        "resourceVersion": "266830424",
+        "uid": "f71f131c-3a61-4040-b438-df461e978e97"
+    },
+    "spec": {}
+}

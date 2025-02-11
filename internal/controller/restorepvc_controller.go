@@ -482,7 +482,7 @@ func (r *RestorePvcReconciler) updateDecrease_InUseSnapshot(ctx context.Context,
 	if err := r.Client.Get(ctx, client.ObjectKey{Name: restorePvc.Spec.SnapshotName, Namespace: restorePvc.Namespace}, snapshot); err != nil {
 		// If the object is not found, treat it as already deleted
 		if apierrors.IsNotFound(err) {
-			return err
+			return nil
 		}
 		return err
 	}

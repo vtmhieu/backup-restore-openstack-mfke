@@ -1,0 +1,42 @@
+{
+    "apiVersion": "snapshot.mfke.io/v1beta1",
+    "kind": "SyncSnapshot",
+    "metadata": {
+        "creationTimestamp": "2024-09-09T08:00:23Z",
+        "generation": 1,
+        "labels": {
+            "app.kubernetes.io/created-by": "backup-restore-openstack-mfke",
+            "app.kubernetes.io/instance": "snapshot-sample",
+            "app.kubernetes.io/managed-by": "kustomize",
+            "app.kubernetes.io/name": "syncsnapshot",
+            "app.kubernetes.io/part-of": "backup-restore-openstack-mfke"
+        },
+        "managedFields": [
+            {
+                "apiVersion": "snapshot.mfke.io/v1beta1",
+                "fieldsType": "FieldsV1",
+                "fieldsV1": {
+                    "f:metadata": {
+                        "f:labels": {
+                            ".": {},
+                            "f:app.kubernetes.io/created-by": {},
+                            "f:app.kubernetes.io/instance": {},
+                            "f:app.kubernetes.io/managed-by": {},
+                            "f:app.kubernetes.io/name": {},
+                            "f:app.kubernetes.io/part-of": {}
+                        }
+                    },
+                    "f:spec": {}
+                },
+                "manager": "PostmanRuntime",
+                "operation": "Update",
+                "time": "2024-09-09T08:00:23Z"
+            }
+        ],
+        "name": "syncsnapshot-sample",
+        "namespace": "fke-hungbq8-lno5d5yc",
+        "resourceVersion": "266821653",
+        "uid": "f3a4a86a-caab-4e88-8084-2e126b260c0d"
+    },
+    "spec": {}
+}

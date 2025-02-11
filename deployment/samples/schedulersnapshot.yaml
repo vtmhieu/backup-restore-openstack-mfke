@@ -1,0 +1,21 @@
+apiVersion: snapshot.mfke.io/v1beta1
+kind: SchedulerSnapshot
+metadata:
+  labels:
+    app.kubernetes.io/name: schedulersnapshot
+    app.kubernetes.io/instance: schedulersnapshot-sample
+    app.kubernetes.io/part-of: backup-restore-openstack-mfke
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: backup-restore-openstack-mfke
+  name: schedulersnapshot-sample
+spec:
+  enabled: true #false
+  snapshotScheduler:
+    pvcName: wp-pv-claim
+    namespace: default
+    schedule:
+    - start: 00 10 * * *
+      location: Asia/Bangkok
+    retentionPolicy:
+      timeUnits: minutes #hours, days
+      max: 10 
