@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -122,14 +123,26 @@ func (r *PvcReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 			}
 			return ctrl.Result{}, err
 		}
-		log.V(1).Info("Reconcile", "PVC list has been successfully updated", req.Namespace)
-		meta.SetStatusCondition(&pvc.Status.Conditions, metav1.Condition{Type: "Available",
-			Status: metav1.ConditionTrue, Reason: "Reconciling",
-			Message: fmt.Sprintf("PVC List %s in shoot %s is updated", pvc.Name, pvc.Namespace)})
-		klog.Infof("Status of PVC %v", pvc.Status.Conditions)
-		if err := r.Status().Update(ctx, pvc); err != nil {
-			log.Error(err, "Failed to update PVC crds status")
-			return ctrl.Result{}, err
+
+		// Check if the Available condition already matches the desired state
+		availableCondition := meta.FindStatusCondition(pvc.Status.Conditions, "Available")
+		desiredMessage := fmt.Sprintf("PVC List %s in shoot %s is updated", pvc.Name, pvc.Namespace)
+		if availableCondition == nil ||
+			availableCondition.Status != metav1.ConditionTrue ||
+			availableCondition.Reason != "Reconciling" ||
+			availableCondition.Message != desiredMessage {
+
+			meta.SetStatusCondition(&pvc.Status.Conditions, metav1.Condition{
+				Type:    "Available",
+				Status:  metav1.ConditionTrue,
+				Reason:  "Reconciling",
+				Message: desiredMessage,
+			})
+
+			if err := r.Status().Update(ctx, pvc); err != nil {
+				log.Error(err, "Failed to update PVC status")
+				return ctrl.Result{}, err
+			}
 		}
 
 		return ctrl.Result{RequeueAfter: 20 * time.Minute}, nil
@@ -194,18 +207,23 @@ func (r *PvcReconciler) ReconcilePvc(ctx context.Context, c client.Client, pvc *
 	if err != nil {
 		return fmt.Errorf("unable to create shoot client set %s: %v", clusterName, err)
 	}
-	klog.Infof("List of namespace %v", namespaceList)
 
 	// get all PVC existing in shoot
 	pvcList, err := getPVC(shootClientSet, namespaceList)
 	if err != nil {
 		return fmt.Errorf("unable to get pvc list in shoot %s: %v", clusterName, err)
 	}
-	for _, pvc := range pvcList.PVCList {
-		klog.Infof("List of pvc: name %s, namespace %s, volume name: %s", pvc.PvcName, pvc.Namespace, pvc.VolumeName)
-	}
+	// for _, pvc := range pvcList.PVCList {
+	// 	klog.Infof("List of pvc: name %s, namespace %s, volume name: %s", pvc.PvcName, pvc.Namespace, pvc.VolumeName)
+	// }
+
 	// update status
-	pvc.Status = pvcList
+	// Only update the status if the PVC list has changed
+	if !reflect.DeepEqual(pvc.Status.PVCList, pvcList.PVCList) {
+		// update status
+		klog.Infof("There is different in pvc list")
+		pvc.Status.PVCList = pvcList.PVCList
+	}
 
 	if pvc.Annotations[PvcReconcileAnnotation] == "true" {
 		delete(pvc.Annotations, PvcReconcileAnnotation)
@@ -235,8 +253,6 @@ func getPVC(shootClientSet *kubernetes.Clientset, namespaceList []string) (snaps
 				pvcDetail.AccessMode = item.Spec.AccessModes
 				pvcStatus.PVCList = append(pvcStatus.PVCList, pvcDetail)
 			}
-		} else {
-			klog.Infof("There is no PVC in ns: %s", ns)
 		}
 	}
 	return pvcStatus, nil

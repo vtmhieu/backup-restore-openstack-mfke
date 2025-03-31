@@ -364,7 +364,7 @@ func (r *SchedulerSnapshotReconciler) ReconcileScheduleSnapshot(
 						previousTime := previousSnapshotDuration(parseCron, parseLocation, now)
 						klog.Infof("Time to the last snapshot is: %s", previousTime)
 
-						if previousTime < time.Second && requeuAfter > 0 {
+						if previousTime < 10*time.Second && requeuAfter > 0 {
 							// run snapshot
 							err := newCreateSnapshot(ctx, c, pvcSnapshotClass.PvcName, pvcSnapshotClass.Namespace, scheduleSnapshot.Namespace, "Scheduled")
 							if err != nil {

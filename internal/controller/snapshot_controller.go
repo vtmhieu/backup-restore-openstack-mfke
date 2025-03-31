@@ -346,50 +346,61 @@ func (r *CreateSnapshotReconciler) handleSnapshotError(
 	newStatus := r.buildSnapshotStatus(snapshot, snapshotReturn, "Failed")
 	if err := r.updateSnapshotStatus(ctx, snapshot, newStatus); err != nil {
 		klog.Error(err, "Failed to update snapshot CRD status")
-		return ctrl.Result{RequeueAfter: 2 * time.Minute}, err
+		return ctrl.Result{RequeueAfter: time.Minute}, err
 	}
 
-	meta.SetStatusCondition(
-		&snapshot.Status.Conditions,
-		metav1.Condition{
+	failedMessage := fmt.Sprintf("Failed to create snapshot for PVC %s: %s", snapshot.Spec.PvcName, err.Error())
+	failedCondition := meta.FindStatusCondition(snapshot.Status.Conditions, "Available")
+
+	if failedCondition == nil || failedCondition.Status != metav1.ConditionFalse || failedCondition.Message != failedMessage {
+		meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{
 			Type:    "Available",
 			Status:  metav1.ConditionFalse,
-			Reason:  "Create",
-			Message: fmt.Sprintf("Failed to create snapshot for the PVC (%s): (%s)", snapshot.Spec.PvcName, err.Error()),
+			Reason:  "CreateFailed",
+			Message: failedMessage,
 		})
 
-	if err := r.Status().Update(ctx, snapshot); err != nil {
-		klog.Error(err, "Failed to update Snapshot status condition")
-		return ctrl.Result{RequeueAfter: 2 * time.Minute}, err
+		if err := r.Status().Update(ctx, snapshot); err != nil {
+			klog.Error(err, "Failed to update Snapshot status condition")
+			return ctrl.Result{RequeueAfter: time.Minute}, err
+		}
 	}
 
-	return ctrl.Result{}, err
+	return ctrl.Result{RequeueAfter: time.Minute}, err
 }
 
 func (r *CreateSnapshotReconciler) handleSnapshotSuccess(ctx context.Context,
 	snapshot *snapshotv1beta1.Snapshot, snapshotReturn snapshotv1beta1.PvSnapshotItem) (ctrl.Result, error) {
+
 	newStatus := r.buildSnapshotStatus(snapshot, snapshotReturn, "Succeeded")
+
 	if err := r.updateSnapshotStatus(ctx, snapshot, newStatus); err != nil {
 		klog.Error(err, "Failed to update snapshot CRD status")
-		return ctrl.Result{}, err
+		return ctrl.Result{RequeueAfter: time.Minute}, err
 	}
 
-	meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{
-		Type:    "Available",
-		Status:  metav1.ConditionTrue,
-		Reason:  "Create",
-		Message: fmt.Sprintf("Snapshot in shoot %s is created successfully", snapshot.Namespace),
-	})
-
-	if err := r.Status().Update(ctx, snapshot); err != nil {
-		klog.Error(err, "Failed to update Snapshot status condition")
-		return ctrl.Result{}, err
-	}
 	if snapshot.Status.CreationTime == "N/A" {
-		return ctrl.Result{RequeueAfter: 3 * time.Minute}, nil
+		return ctrl.Result{RequeueAfter: time.Minute}, nil
 	}
 
-	return ctrl.Result{}, nil
+	successMessage := fmt.Sprintf("Snapshot %s created successfully", snapshot.Name)
+	successCondition := meta.FindStatusCondition(snapshot.Status.Conditions, "Available")
+
+	if successCondition == nil || successCondition.Status != metav1.ConditionTrue || successCondition.Message != successMessage {
+		meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{
+			Type:    "Available",
+			Status:  metav1.ConditionTrue,
+			Reason:  "Created",
+			Message: successMessage,
+		})
+
+		if err := r.Status().Update(ctx, snapshot); err != nil {
+			klog.Error(err, "Failed to update Snapshot status condition")
+			return ctrl.Result{RequeueAfter: time.Minute}, err
+		}
+	}
+
+	return ctrl.Result{RequeueAfter: time.Minute}, nil
 }
 
 func (r *CreateSnapshotReconciler) buildSnapshotStatus(snapshot *snapshotv1beta1.Snapshot,
