@@ -226,19 +226,43 @@ func (r *PvSnapshotReconciler) ReconcilePvSnapshot(ctx context.Context, c client
 	return nil
 }
 
-func (r *PvSnapshotReconciler) getPvSnapshotStatus(dynamicClienSet *dynamic.DynamicClient, namespaceList []string) (snapshotv1beta1.PvSnapshotStatus, error) {
+// getPvSnapshotStatus retrieves the status of PV snapshots across multiple namespaces
+func (r *PvSnapshotReconciler) getPvSnapshotStatus(dynamicClientSet *dynamic.DynamicClient, namespaceList []string) (snapshotv1beta1.PvSnapshotStatus, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
 	pvSnapshotStatus := snapshotv1beta1.PvSnapshotStatus{}
+	var errs []error
+	var totalSnapshots int
+
 	for _, ns := range namespaceList {
-		//klog.Infof("Checking snapshot in namespace: %s", ns)
-		resp, err := getVolumeSnapShotInShoot(dynamicClienSet, ns)
+		klog.V(4).Infof("Fetching snapshots from namespace: %s", ns)
+		snapshots, err := getVolumeSnapShotInShoot(dynamicClientSet, ns)
 		if err != nil {
-			fmt.Printf("Unable to get Snapshot List in shoot cluster namespace: %s", ns)
+			errs = append(errs, fmt.Errorf("failed to get snapshots in namespace %s: %w", ns, err))
 			continue
 		}
-		if len(resp) != 0 {
-			pvSnapshotStatus.Items = append(pvSnapshotStatus.Items, resp...)
+
+		if len(snapshots) > 0 {
+			pvSnapshotStatus.Items = append(pvSnapshotStatus.Items, snapshots...)
+			totalSnapshots += len(snapshots)
+			klog.V(4).Infof("Found %d valid snapshots in namespace %s", len(snapshots), ns)
+		}
+
+		select {
+		case <-ctx.Done():
+			return pvSnapshotStatus, fmt.Errorf("timeout while fetching snapshots: %w", ctx.Err())
+		default:
+			continue
 		}
 	}
+
+	if len(errs) > 0 {
+		klog.Warningf("Encountered %d errors while fetching snapshots: %v", len(errs), errs)
+	}
+
+	klog.V(4).Infof("Successfully retrieved %d total snapshots across %d namespaces",
+		totalSnapshots, len(namespaceList))
 	return pvSnapshotStatus, nil
 }
 
