@@ -237,142 +237,72 @@ parameters:
 }
 
 // getVolumeSnapShotInShoot get all the snapshot in Shoot cluster with specific namespace
-func getVolumeSnapShotInShoot(dynamicClienSet *dynamic.DynamicClient,
+func getVolumeSnapShotInShoot(dynamicClientSet *dynamic.DynamicClient,
 	resourceNamespace string) ([]snapshotv1beta1.PvSnapshotItem, error) {
 	pvSnapshotItemList := []snapshotv1beta1.PvSnapshotItem{}
-	// // Describe the custom resource
+
 	gvr := schema.GroupVersionResource{
 		Group:    "snapshot.storage.k8s.io",
 		Version:  "v1",
 		Resource: VolumeSnapshot,
 	}
-	resourceClient := dynamicClienSet.Resource(gvr).Namespace(resourceNamespace)
+
+	resourceClient := dynamicClientSet.Resource(gvr).Namespace(resourceNamespace)
 	resourceList, err := resourceClient.List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
-		fmt.Printf("Error describing custom resource: %s\n", err)
-		fmt.Printf("The crds volumesnapshots is not existed in shoot cluster")
-		return pvSnapshotItemList, err
+		return pvSnapshotItemList, fmt.Errorf("failed to list volume snapshots in namespace %s: %w", resourceNamespace, err)
 	}
+
 	for _, item := range resourceList.Items {
 		pvSnapshot := snapshotv1beta1.PvSnapshotItem{}
-		// get metadata time create
+
+		// Get metadata
 		metadata, found, err := unstructured.NestedMap(item.Object, "metadata")
 		if err != nil || !found {
-			fmt.Println("Error accessing metadata:", err)
+			klog.Warningf("Skipping snapshot in namespace %s due to missing metadata: %v", resourceNamespace, err)
 			continue
 		}
-		// get name of snapshot
+
+		// Get name
 		snapshotName, found, err := unstructured.NestedString(metadata, "name")
 		if err != nil || !found {
-			fmt.Println("Error accessing metadata name:", err)
+			klog.Warningf("Skipping snapshot in namespace %s due to missing name: %v", resourceNamespace, err)
 			continue
 		}
 		pvSnapshot.SnapshotName = snapshotName
-		// get namespace of snapshot
-		namespace, found, err := unstructured.NestedString(metadata, "namespace")
+
+		// Get creation timestamp
+		creationTime, found, err := unstructured.NestedString(metadata, "creationTimestamp")
 		if err != nil || !found {
-			fmt.Println("Error accessing namespace:", err)
+			klog.Warningf("Skipping snapshot %s in namespace %s due to missing creation timestamp",
+				snapshotName, resourceNamespace)
 			continue
-		}
-		pvSnapshot.Namespace = namespace
-		// get pvc name
-		//get spec
-		spec, found, err := unstructured.NestedMap(item.Object, "spec")
-		if err != nil || !found {
-			fmt.Println("Error accessing spec:", err)
-			continue
-		}
-		source, found, err := unstructured.NestedMap(spec, "source")
-		if err != nil || !found {
-			fmt.Println("Error accessing spec source:", err)
-			continue
-		} else {
-			pvcName, found, err := unstructured.NestedString(source, "persistentVolumeClaimName")
-			if err != nil || !found {
-				fmt.Println("Error accessing spec source:", err)
-				continue
-			}
-			pvSnapshot.SourcePvcName = pvcName
-		}
-		// get volumeSnapshotClassName
-		volumeSnapshotClassName, found, err := unstructured.NestedString(spec, "volumeSnapshotClassName")
-		if err != nil || !found {
-			fmt.Println("Error accessing spec volumeSnapshotClassName:", err)
-			pvSnapshot.VolumeSnapshotClassName = Unknown
-		} else {
-			pvSnapshot.VolumeSnapshotClassName = volumeSnapshotClassName
 		}
 
-		// get status
+		// Parse creation timestamp
+		creationTimestamp, err := time.Parse(time.RFC3339, creationTime)
+		if err != nil {
+			klog.Warningf("Skipping snapshot %s in namespace %s due to invalid creation timestamp format: %v",
+				snapshotName, resourceNamespace, err)
+			continue
+		}
+		pvSnapshot.CreationTime = creationTimestamp.Format(time.RFC3339)
+
+		// Get status
 		status, found, err := unstructured.NestedMap(item.Object, "status")
-		if err != nil || !found {
-			fmt.Println("Error accessing status:", err)
-			continue
-		}
-		// Get snapshotContent
-		snapshotContent, found, err := unstructured.NestedString(status, "boundVolumeSnapshotContentName")
-		if err != nil {
-			// Log actual errors
-			fmt.Println("Error accessing status snapshotContent:", err)
-			pvSnapshot.SnapshotContentName = Unknown
-		} else if !found {
-			// Handle case where the key is not found
-			fmt.Println("Snapshot content not found in status")
-			pvSnapshot.SnapshotContentName = Unknown
-		} else {
-			pvSnapshot.SnapshotContentName = snapshotContent
-		}
-
-		// Get creation time
-		creationTimestamp, found, err := unstructured.NestedString(status, "creationTime")
-		if err != nil {
-			fmt.Println("Error accessing metadata creationTimestamp:", err)
-			pvSnapshot.CreationTime = Unknown
-			//_, _ = getVolumeSnapShotInShoot(dynamicClienSet, resourceNamespace)
-			pvSnapshotItemList = append(pvSnapshotItemList, pvSnapshot)
-			continue
-		} else if !found {
-			fmt.Println("Creation time not found in status")
-			pvSnapshot.CreationTime = Unknown
-			//_, _ = getVolumeSnapShotInShoot(dynamicClienSet, resourceNamespace)
-			pvSnapshotItemList = append(pvSnapshotItemList, pvSnapshot)
-			continue
-		} else {
-			convertCreationTimeStamp, err := convertToUTCPlus7(creationTimestamp)
-			if err != nil {
-				fmt.Println("Error converting creation timestamp:", err)
-				convertCreationTimeStamp = creationTimestamp
+		if err == nil && found {
+			if readyToUse, found := status["readyToUse"].(bool); found {
+				pvSnapshot.ReadyToUse = readyToUse
 			}
-			pvSnapshot.CreationTime = convertCreationTimeStamp
+			if restoreSize, found := status["restoreSize"].(string); found {
+				pvSnapshot.RestoreSize = restoreSize
+			}
 		}
 
-		// Get readyToUse
-		readyToUse, found, err := unstructured.NestedBool(status, "readyToUse")
-		if err != nil {
-			fmt.Println("Error accessing status readyToUse:", err)
-			pvSnapshot.ReadyToUse = false
-		} else if !found {
-			fmt.Println("readyToUse flag not found in status")
-			pvSnapshot.ReadyToUse = false
-		} else {
-			pvSnapshot.ReadyToUse = readyToUse
-		}
-
-		// Get restoreSize
-		restoreSize, found, err := unstructured.NestedString(status, "restoreSize")
-		if err != nil {
-			fmt.Println("Error accessing status restoreSize:", err)
-			pvSnapshot.RestoreSize = Unknown
-		} else if !found {
-			fmt.Println("Restore size not found in status")
-			pvSnapshot.RestoreSize = Unknown
-		} else {
-			pvSnapshot.RestoreSize = restoreSize
-		}
-
-		// add to return list
 		pvSnapshotItemList = append(pvSnapshotItemList, pvSnapshot)
 	}
+
+	klog.V(4).Infof("Found %d valid snapshots in namespace %s", len(pvSnapshotItemList), resourceNamespace)
 	return pvSnapshotItemList, nil
 }
 

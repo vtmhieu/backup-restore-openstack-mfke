@@ -386,7 +386,8 @@ func (r *SchedulerSnapshotReconciler) ReconcileScheduleSnapshot(
 					// Get snapshot list based on namespace
 					snapshotListReturn, err := r.getSnapshotList(ctx, c)
 					if err != nil {
-						klog.Errorf("Unable to get snapshot list in namespace %s for Retention Reconciliation", pvcSnapshotClass.Namespace)
+						klog.Errorf("Unable to get snapshot list in namespace %s for Retention Reconciliation: %v",
+							pvcSnapshotClass.Namespace, err)
 						continue // Early exit if getting snapshot list fails
 					}
 
@@ -406,29 +407,31 @@ func (r *SchedulerSnapshotReconciler) ReconcileScheduleSnapshot(
 
 					for _, snapshot := range snapshotListReturn.Items {
 						if snapshot.Status.SourcePvcName == pvcSnapshotClass.PvcName {
-							// Calculate duration from creation time to now
-
-							var duration time.Duration
-							if snapshot.Status.CreationTime != "" && snapshot.Status.CreationTime != "N/A" {
-								duration, err = calculateDuration(snapshot.Status.CreationTime)
-							} else {
-								duration, err = calculateDuration(snapshot.CreationTimestamp.String())
-							}
-							if err != nil {
-								klog.Errorf("Error calculating duration for snapshot %s: %v", snapshot.Status.SnapshotName, err)
+							// Skip if creation timestamp is missing
+							if snapshot.CreationTimestamp.IsZero() {
+								klog.Warningf("Skipping snapshot %s due to missing creation timestamp",
+									snapshot.Name)
 								continue
 							}
-							klog.Infof("The duration from creation time of Snapshot %s to now is: %s", snapshot.Status.SnapshotName, duration)
+
+							// Calculate duration from creation time to now
+							duration := time.Since(snapshot.CreationTimestamp.Time)
+							klog.V(4).Infof("Snapshot %s age: %v", snapshot.Name, duration)
 
 							// Compare duration with maxDuration
 							if duration >= maxDuration*unitDuration {
 								if snapshot.Spec.NumInUse > 0 {
+									klog.V(4).Infof("Skipping deletion of snapshot %s as it is in use",
+										snapshot.Name)
 									continue
 								}
-								if err := newDeleteSnapshot(ctx, c, snapshot.Name, snapshot.Namespace, snapshot.Spec.PvcName, snapshot.Spec.Namespace); err != nil {
-									klog.Errorf("Unable to delete snapshot %s in namespace %s due to exceed Retention", snapshot.Status.SnapshotName, pvcSnapshotClass.Namespace)
+								if err := newDeleteSnapshot(ctx, c, snapshot.Name, snapshot.Namespace,
+									snapshot.Spec.PvcName, snapshot.Spec.Namespace); err != nil {
+									klog.Errorf("Unable to delete snapshot %s in namespace %s due to exceed Retention: %v",
+										snapshot.Name, pvcSnapshotClass.Namespace, err)
 								} else {
-									klog.Infof("Successfully deleted snapshot %s in namespace %s due to Retention", snapshot.Status.SnapshotName, pvcSnapshotClass.Namespace)
+									klog.Infof("Successfully deleted snapshot %s in namespace %s due to Retention",
+										snapshot.Name, pvcSnapshotClass.Namespace)
 								}
 							} else {
 								timeLeft := maxDuration*unitDuration - duration
@@ -464,21 +467,55 @@ func (r *SchedulerSnapshotReconciler) ReconcileScheduleSnapshot(
 	return requeueAfter, nil
 }
 
+// getSnapshotList retrieves a list of all Snapshots in the cluster
 func (r *SchedulerSnapshotReconciler) getSnapshotList(ctx context.Context, c client.Client) (snapshotv1beta1.SnapshotList, error) {
+	timeoutCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
 	snapshotList := &snapshotv1beta1.SnapshotList{}
-	if err := c.List(ctx, snapshotList); err != nil {
-		klog.Errorf("Error listing Snapshots: %s", err)
-		return *snapshotList, err
+	if err := c.List(timeoutCtx, snapshotList); err != nil {
+		return *snapshotList, fmt.Errorf("failed to list snapshots: %w", err)
 	}
+
+	// Validate snapshots and filter out invalid ones
+	validSnapshots := make([]snapshotv1beta1.Snapshot, 0, len(snapshotList.Items))
+	for _, snapshot := range snapshotList.Items {
+		if snapshot.CreationTimestamp.IsZero() {
+			klog.Warningf("Skipping snapshot %s/%s due to missing creation timestamp",
+				snapshot.Namespace, snapshot.Name)
+			continue
+		}
+		validSnapshots = append(validSnapshots, snapshot)
+	}
+	snapshotList.Items = validSnapshots
+
+	klog.V(4).Infof("Successfully retrieved %d valid snapshots", len(snapshotList.Items))
 	return *snapshotList, nil
 }
 
+// getConfigSnapshotList retrieves a list of all CreateKubeSnapshots in the cluster
 func (r *SchedulerSnapshotReconciler) getConfigSnapshotList(ctx context.Context, c client.Client) (snapshotv1beta1.CreateKubeSnapshotList, error) {
+	timeoutCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
 	configSnapshotList := &snapshotv1beta1.CreateKubeSnapshotList{}
-	if err := c.List(ctx, configSnapshotList); err != nil {
-		klog.Errorf("Error listing Snapshots: %s", err)
-		return *configSnapshotList, err
+	if err := c.List(timeoutCtx, configSnapshotList); err != nil {
+		return *configSnapshotList, fmt.Errorf("failed to list config snapshots: %w", err)
 	}
+
+	// Validate config snapshots and filter out invalid ones
+	validSnapshots := make([]snapshotv1beta1.CreateKubeSnapshot, 0, len(configSnapshotList.Items))
+	for _, snapshot := range configSnapshotList.Items {
+		if snapshot.CreationTimestamp.IsZero() {
+			klog.Warningf("Skipping config snapshot %s/%s due to missing creation timestamp",
+				snapshot.Namespace, snapshot.Name)
+			continue
+		}
+		validSnapshots = append(validSnapshots, snapshot)
+	}
+	configSnapshotList.Items = validSnapshots
+
+	klog.V(4).Infof("Successfully retrieved %d valid config snapshots", len(configSnapshotList.Items))
 	return *configSnapshotList, nil
 }
 
