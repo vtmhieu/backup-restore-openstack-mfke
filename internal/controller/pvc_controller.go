@@ -213,16 +213,17 @@ func (r *PvcReconciler) ReconcilePvc(ctx context.Context, c client.Client, pvc *
 	if err != nil {
 		return fmt.Errorf("unable to get pvc list in shoot %s: %v", clusterName, err)
 	}
-	// for _, pvc := range pvcList.PVCList {
-	// 	klog.Infof("List of pvc: name %s, namespace %s, volume name: %s", pvc.PvcName, pvc.Namespace, pvc.VolumeName)
-	// }
 
-	// update status
-	// Only update the status if the PVC list has changed
+	// Compare current status with new status and update if different
 	if !reflect.DeepEqual(pvc.Status.PVCList, pvcList.PVCList) {
 		// update status
 		klog.Infof("There is different in pvc list")
 		pvc.Status.PVCList = pvcList.PVCList
+
+		// Update the status in the seed cluster
+		if err := r.Status().Update(ctx, pvc); err != nil {
+			return fmt.Errorf("failed to update PVC status in seed cluster: %v", err)
+		}
 	}
 
 	if pvc.Annotations[PvcReconcileAnnotation] == "true" {

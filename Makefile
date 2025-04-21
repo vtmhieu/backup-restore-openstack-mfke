@@ -1,5 +1,5 @@
 REGISTRY                    := registry.fke.fptcloud.com
-IMAGE_PREFIX                := $(REGISTRY)/762c8029-26d9-4bea-b461-989ee4d4890f
+IMAGE_PREFIX                := $(REGISTRY)/xplat-fke
 IMAGE_NAME 					:= backup-restore-openstack
 REPO_ROOT                   := $(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
 VERSION                     := $(shell cat "${REPO_ROOT}/VERSION")
