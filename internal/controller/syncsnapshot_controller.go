@@ -114,13 +114,14 @@ func (r *SyncSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	if syncSnapshot.ObjectMeta.DeletionTimestamp.IsZero() {
+		var missingSnapshots, extraSnapshots []snapshotv1beta1.SnapshotStatus
+		// missingSnapshots, extraSnapshots, err := r.ReconcileSyncSnapshot(ctx, r.Client, syncSnapshot)
+		// if err != nil {
+		// 	log.Error(err, "Failed to Sync Pvc Snapshot")
+		// }
 
-		missingSnapshots, extraSnapshots, err := r.ReconcileSyncSnapshot(ctx, r.Client, syncSnapshot)
+		err := r.ReconcileSyncRestore(ctx, r.Client, syncSnapshot)
 		if err != nil {
-			log.Error(err, "Failed to Sync Pvc Snapshot")
-		}
-
-		if err = r.ReconcileSyncRestore(ctx, r.Client, syncSnapshot); err != nil {
 			log.Error(err, "Failed to Sync Restore Pvc")
 		}
 
@@ -137,8 +138,8 @@ func (r *SyncSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		meta.SetStatusCondition(&syncSnapshot.Status.Conditions, metav1.Condition{Type: "Available",
 			Status: metav1.ConditionTrue, Reason: "Reconciling",
 			Message: fmt.Sprintf("PVSnapshot List %s in shoot %s is updated", syncSnapshot.Name, syncSnapshot.Namespace)})
-		syncSnapshot.Status.MissingSnapshot = missingSnapshots
-		syncSnapshot.Status.ExtraSnapshot = extraSnapshots
+		//syncSnapshot.Status.MissingSnapshot = missingSnapshots
+		//syncSnapshot.Status.ExtraSnapshot = extraSnapshots
 
 		if err := r.Status().Update(ctx, syncSnapshot); err != nil {
 			log.Error(err, "Failed to update PVSnapshot crds status")
