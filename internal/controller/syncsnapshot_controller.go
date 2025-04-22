@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -117,12 +118,10 @@ func (r *SyncSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		missingSnapshots, extraSnapshots, err := r.ReconcileSyncSnapshot(ctx, r.Client, syncSnapshot)
 		if err != nil {
 			log.Error(err, "Failed to Sync Pvc Snapshot")
-			//return r.updateStatusWithError(ctx, syncSnapshot, missingSnapshots, extraSnapshots, err, "Failed to Sync Pvc Snapshot")
 		}
 
 		if err = r.ReconcileSyncRestore(ctx, r.Client, syncSnapshot); err != nil {
 			log.Error(err, "Failed to Sync Restore Pvc")
-			//return r.updateStatusWithError(ctx, syncSnapshot, missingSnapshots, extraSnapshots, err, "Failed to Sync Restore Pvc")
 		}
 
 		if err = r.ReconcilePvc(ctx, r.Client, syncSnapshot); err != nil {
@@ -145,7 +144,7 @@ func (r *SyncSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			log.Error(err, "Failed to update PVSnapshot crds status")
 			return ctrl.Result{}, err
 		}
-		return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
+		return ctrl.Result{RequeueAfter: 20 * time.Minute}, nil
 
 	} else {
 		meta.SetStatusCondition(&syncSnapshot.Status.Conditions,
@@ -196,7 +195,7 @@ func (r *SyncSnapshotReconciler) ReconcileSyncSnapshot(ctx context.Context,
 
 	// get namespace in seed
 	namespace := syncSnapshot.Namespace
-	clusterName := namespace[4:]
+	clusterName := strings.TrimPrefix(namespace, "fke-")
 
 	// get kubeconfig
 	shootKubeconfigDataString, err := GetSecretShootKubeconfig(ctx, c, namespace)

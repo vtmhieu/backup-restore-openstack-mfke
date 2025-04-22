@@ -502,10 +502,10 @@ func convertTimeNow2String(now time.Time) string {
 	return converted
 }
 
-func getPvSnapshotListPerNamespace(dynamicClienSet *dynamic.DynamicClient, namespace string) ([]snapshotv1beta1.PvSnapshotItem, error) {
+func getPvSnapshotListPerNamespace(dynamicClienSet *dynamic.DynamicClient, namespace string, clusterName string) ([]snapshotv1beta1.PvSnapshotItem, error) {
 	snapshotList := []snapshotv1beta1.PvSnapshotItem{}
 
-	klog.Infof("Checking snapshot in namespace: %s", namespace)
+	klog.Infof("[Shoot: %s]\nChecking snapshot in namespace: %s", clusterName, namespace)
 	resp, err := getVolumeSnapShotInShoot(dynamicClienSet, namespace)
 	if err != nil {
 		fmt.Printf("Unable to get Snapshot List in shoot cluster namespace: %s", namespace)

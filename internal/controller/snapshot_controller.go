@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -158,7 +159,7 @@ func (r *CreateSnapshotReconciler) ReconcileCreateSnapshot(ctx context.Context, 
 	SnapshotReturn := snapshotv1beta1.PvSnapshotItem{}
 	// get namespace in seed
 	namespace := createSnapshot.Namespace
-	clusterName := namespace[4:]
+	clusterName := strings.TrimPrefix(namespace, "fke-")
 	// get kubeconfig
 	shootKubeconfigDataString, err := GetSecretShootKubeconfig(ctx, c, namespace)
 	if err != nil {
@@ -172,7 +173,7 @@ func (r *CreateSnapshotReconciler) ReconcileCreateSnapshot(ctx context.Context, 
 
 	// check if snapshot existed?
 	// get snapshot list based on namespace
-	snapshotListReturn, err := getPvSnapshotListPerNamespace(dynamicClientSet, createSnapshot.Spec.Namespace)
+	snapshotListReturn, err := getPvSnapshotListPerNamespace(dynamicClientSet, createSnapshot.Spec.Namespace, clusterName)
 	if err != nil {
 		klog.Errorf("Unable to get snapshot list in namespace %s ", createSnapshot.Spec.Namespace)
 		return SnapshotReturn, err
@@ -219,7 +220,7 @@ func (r *CreateSnapshotReconciler) ReconcileCreateSnapshot(ctx context.Context, 
 	maxRetries := 5
 	for i := 0; i < maxRetries; i++ {
 		time.Sleep(2 * time.Second) // Wait before checking status
-		snapshotListReturn, err = getPvSnapshotListPerNamespace(dynamicClientSet, createSnapshot.Spec.Namespace)
+		snapshotListReturn, err = getPvSnapshotListPerNamespace(dynamicClientSet, createSnapshot.Spec.Namespace, clusterName)
 		if err != nil {
 			klog.Errorf("Unable to get snapshot list in namespace %s ", createSnapshot.Spec.Namespace)
 			continue
@@ -299,7 +300,7 @@ func deleteSnapshot(dynamicClientSet *dynamic.DynamicClient, snapshotName string
 func (r *CreateSnapshotReconciler) DeleteSnapshot(ctx context.Context, c client.Client, DeleteSnapshot *snapshotv1beta1.Snapshot) error {
 	// get namespace in seed
 	namespace := DeleteSnapshot.Namespace
-	clusterName := namespace[4:]
+	clusterName := strings.TrimPrefix(namespace, "fke-")
 	// get kubeconfig
 	shootKubeconfigDataString, err := GetSecretShootKubeconfig(ctx, c, namespace)
 	if err != nil {
@@ -313,7 +314,7 @@ func (r *CreateSnapshotReconciler) DeleteSnapshot(ctx context.Context, c client.
 
 	// check if snapshot existed?
 	// get snapshot list based on namespace
-	snapshotListReturn, err := getPvSnapshotListPerNamespace(dynamicClientSet, DeleteSnapshot.Spec.Namespace)
+	snapshotListReturn, err := getPvSnapshotListPerNamespace(dynamicClientSet, DeleteSnapshot.Spec.Namespace, clusterName)
 	if err != nil {
 		klog.Errorf("Unabled to get snapshot list in namespace %s ", DeleteSnapshot.Spec.Namespace)
 	}
@@ -395,6 +396,57 @@ func (r *CreateSnapshotReconciler) handleSnapshotSuccess(ctx context.Context,
 	if snapshotReturn.CreationTime == "N/A" || !snapshotReturn.ReadyToUse {
 		// If snapshot is not ready, requeue with a delay
 		log.Info("Snapshot is not ready yet, will check again", "snapshot", snapshot.Name)
+		// Retry Count
+		retryCount := 0
+
+		if snapshot.Annotations == nil {
+			snapshot.Annotations = make(map[string]string)
+		} else if retryStr, exists := snapshot.Annotations["snapshot.reconcile.retries"]; exists {
+			if count, err := strconv.Atoi(retryStr); err == nil {
+				retryCount = count
+			}
+		}
+
+		if retryCount >= 5 && snapshotReturn.CreationTime == "N/A" {
+			log.Info("Reached retry limit for snapshot creation time", "snapshot", snapshot.Name)
+			newStatus.CreationStatus = "Failed"
+			newStatus.CreationTime = "Timeout exceeded"
+			meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{
+				Type:    "Available",
+				Status:  metav1.ConditionFalse,
+				Reason:  "Timeout",
+				Message: "Snapshot creation timed out after 5 retries",
+			})
+
+			// Only update if status has changed
+			if !statusEqual(snapshot.Status, newStatus) {
+				snapshot.Status = newStatus
+
+				if err := r.Status().Update(ctx, snapshot); err != nil {
+					if apierrors.IsConflict(err) {
+						// If there's a conflict, requeue the request
+						return ctrl.Result{Requeue: true}, nil
+					}
+					log.Error(err, "Failed to update snapshot status after timeout")
+					return ctrl.Result{}, err
+				}
+			}
+			return ctrl.Result{}, nil
+		}
+
+		// Increment and update retry count
+		retryCount++
+		snapshot.Annotations["snapshot.reconcile.retries"] = strconv.Itoa(retryCount)
+		if err := r.Update(ctx, snapshot); err != nil {
+			if apierrors.IsConflict(err) {
+				return ctrl.Result{Requeue: true}, nil
+			}
+			log.Error(err, "Failed to update snapshot annotations")
+			return ctrl.Result{RequeueAfter: 1 * time.Minute}, err
+		}
+
+		log.Info("Retrying snapshot %s for %s times", snapshot.Name, retryCount)
+
 		// Update status to indicate snapshot is in progress
 		newStatus.CreationStatus = "InProgress"
 		if snapshotReturn.CreationTime == "N/A" {
