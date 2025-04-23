@@ -195,7 +195,7 @@ func (r *PvSnapshotReconciler) ReconcilePvSnapshot(ctx context.Context, c client
 		return fmt.Errorf("unable to create shoot client set %s: %v", clusterName, err)
 	}
 	//create dynamic client from this kubeconfig data -> send request for crds
-	dynamicClientSet, err := CreateDynamicKubeClient(ctx, shootKubeconfigDataString)
+	dynamicClientSet, err := CreateDynamicKubeClient(ctx, shootKubeconfigDataString, clusterName)
 	if err != nil {
 		return fmt.Errorf("unable to create dynamic shoot client set %s: %v", clusterName, err)
 	}

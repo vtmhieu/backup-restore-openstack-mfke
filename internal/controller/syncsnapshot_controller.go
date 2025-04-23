@@ -60,7 +60,7 @@ func (r *SyncSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	log := log.FromContext(ctx)
 
 	syncSnapshot := &snapshotv1beta1.SyncSnapshot{}
-	log.Info("Reconcile", "req", req)
+	log.V(1).Info("Reconcile", "req", req)
 
 	// Check existance + finalizer
 	if err := r.Client.Get(ctx, types.NamespacedName{Name: req.Name, Namespace: req.Namespace}, syncSnapshot); err != nil {
@@ -77,12 +77,12 @@ func (r *SyncSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		controllerutil.AddFinalizer(syncSnapshot, SyncSnapshotFinalizerName)
 
 		if err := r.Update(ctx, syncSnapshot); err != nil {
-			log.Error(err, "Failed to update syncSnapshot controller finalizer")
+			log.V(2).Error(err, "Failed to update syncSnapshot controller finalizer")
 			return ctrl.Result{}, err
 		}
 
 		if err := r.Get(ctx, req.NamespacedName, syncSnapshot); err != nil {
-			log.Error(err, "Failed to re-fetch syncSnapshot list in shoot")
+			log.V(2).Error(err, "Failed to re-fetch syncSnapshot list in shoot")
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{}, nil
@@ -94,43 +94,39 @@ func (r *SyncSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			Status:  metav1.ConditionUnknown,
 			Reason:  "Reconciling",
 			Message: "Starting reconciliation"})
-		klog.Infof("Set Status Condition of restorePvc crd %v", syncSnapshot.Status.Conditions)
+		log.V(2).Info("Set Status Condition of restorePvc crd", syncSnapshot.Status.Conditions)
 
 		if err := r.Status().Update(ctx, syncSnapshot); err != nil {
-			log.Error(err, "Failed to update restorePvc status condition")
+			log.V(2).Error(err, "Failed to update restorePvc status condition")
 			return ctrl.Result{}, err
 		}
 
-		// Let's re-fetch the memcached Custom Resource after updating the status
-		// so that we have the latest state of the resource on the cluster and we will avoid
-		// raising the error "the object has been modified, please apply
-		// your changes to the latest version and try again" which would re-trigger the reconciliation
-		// if we try to update it again in the following operations
 		if err := r.Get(ctx, req.NamespacedName, syncSnapshot); err != nil {
-			log.Error(err, "Failed to re-fetch restorePvc list")
+			log.V(2).Error(err, "Failed to re-fetch restorePvc list")
 			return ctrl.Result{}, err
 		}
-		klog.Infof("Fetch of syncSnapshot %v", syncSnapshot.Status.Conditions)
+		log.V(2).Info("Fetch of syncSnapshot %v", syncSnapshot.Status.Conditions)
 	}
 
 	if syncSnapshot.ObjectMeta.DeletionTimestamp.IsZero() {
 		var missingSnapshots, extraSnapshots []snapshotv1beta1.SnapshotStatus
-		// missingSnapshots, extraSnapshots, err := r.ReconcileSyncSnapshot(ctx, r.Client, syncSnapshot)
+
+		// missingSnapshots, extraSnapshots, err := r.ReconcileSyncSnapshot(ctx, syncSnapshot)
 		// if err != nil {
 		// 	log.Error(err, "Failed to Sync Pvc Snapshot")
 		// }
 
 		err := r.ReconcileSyncRestore(ctx, r.Client, syncSnapshot)
 		if err != nil {
-			log.Error(err, "Failed to Sync Restore Pvc")
+			log.V(1).Error(err, "Failed to Sync Restore Pvc")
 		}
 
 		if err = r.ReconcilePvc(ctx, r.Client, syncSnapshot); err != nil {
-			log.Error(err, "Failed to Sync Pvc List")
+			log.V(1).Error(err, "Failed to Sync Pvc List")
 		}
 
 		if err = r.removeSyncAnnotation(ctx, syncSnapshot); err != nil {
-			log.Error(err, "Failed to remove Annotation for sync snapshot")
+			log.V(1).Error(err, "Failed to remove Annotation for sync snapshot")
 			return r.updateStatusWithError(ctx, syncSnapshot, missingSnapshots, extraSnapshots, err, "Failed to remove Annotation for sync snapshot")
 		}
 
@@ -176,7 +172,7 @@ func (r *SyncSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 		if controllerutil.ContainsFinalizer(syncSnapshot, SyncSnapshotFinalizerName) {
 			if ok := controllerutil.RemoveFinalizer(syncSnapshot, SyncSnapshotFinalizerName); !ok {
-				log.Error(err, "Failed to remove finalizer for createSnapshot crds")
+				log.V(2).Error(err, "Failed to remove finalizer for createSnapshot crds")
 				return ctrl.Result{Requeue: true}, nil
 			}
 			if err := r.Update(ctx, syncSnapshot); err != nil {
@@ -187,9 +183,9 @@ func (r *SyncSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 }
 
-func (r *SyncSnapshotReconciler) ReconcileSyncSnapshot(ctx context.Context,
-	c client.Client, syncSnapshot *snapshotv1beta1.SyncSnapshot) (
+func (r *SyncSnapshotReconciler) ReconcileSyncSnapshot(ctx context.Context, syncSnapshot *snapshotv1beta1.SyncSnapshot) (
 	[]snapshotv1beta1.SnapshotStatus, []snapshotv1beta1.SnapshotStatus, error) {
+	log := log.FromContext(ctx)
 
 	missingSnapshots := []snapshotv1beta1.SnapshotStatus{}
 	extraSnapshots := []snapshotv1beta1.SnapshotStatus{}
@@ -198,8 +194,10 @@ func (r *SyncSnapshotReconciler) ReconcileSyncSnapshot(ctx context.Context,
 	namespace := syncSnapshot.Namespace
 	clusterName := strings.TrimPrefix(namespace, "fke-")
 
+	log.V(3).Info("Creating Shoot Client", clusterName)
+
 	// get kubeconfig
-	shootKubeconfigDataString, err := GetSecretShootKubeconfig(ctx, c, namespace)
+	shootKubeconfigDataString, err := GetSecretShootKubeconfig(ctx, r.Client, namespace)
 	if err != nil {
 		return missingSnapshots, extraSnapshots, fmt.Errorf("unable to get shoot secret data kubeconfig in ns %s: %v", clusterName, err)
 	}
@@ -211,7 +209,7 @@ func (r *SyncSnapshotReconciler) ReconcileSyncSnapshot(ctx context.Context,
 	}
 
 	//create dynamic client from this kubeconfig data -> send request for crds
-	dynamicClientSet, err := CreateDynamicKubeClient(ctx, shootKubeconfigDataString)
+	dynamicClientSet, err := CreateDynamicKubeClient(ctx, shootKubeconfigDataString, clusterName)
 	if err != nil {
 		return missingSnapshots, extraSnapshots, fmt.Errorf("unable to create dynamic shoot client set %s: %v", clusterName, err)
 	}
@@ -221,18 +219,18 @@ func (r *SyncSnapshotReconciler) ReconcileSyncSnapshot(ctx context.Context,
 	if err != nil {
 		return missingSnapshots, extraSnapshots, fmt.Errorf("unable to create shoot client set %s: %v", clusterName, err)
 	}
-	klog.Infof("List of namespace %v", namespaceList)
+	log.V(3).Info("List of namespace %v", namespaceList)
 
 	// get list of snapshot in seed and shoot
-	seedSnapshotList, err := getSeedSnapshotList(ctx, c, namespace)
+	seedSnapshotList, err := getSeedSnapshotList(ctx, r.Client, namespace)
 	if err != nil {
-		klog.Error("Unable to get seed Snapshot List", err)
+		log.V(3).Error(err, "Unable to get seed Snapshot List")
 		return missingSnapshots, extraSnapshots, fmt.Errorf("unable to get pvc list in seed %s: %v", clusterName, err)
 	}
 
 	shootSnapshotList, err := getPvSnapshotStatus(dynamicClientSet, namespaceList)
 	if err != nil {
-		klog.Error("Unable to get shoot Snapshot List", err)
+		log.V(3).Error(err, "Unable to get shoot Snapshot List")
 		return missingSnapshots, extraSnapshots, fmt.Errorf("unable to get pvc list in shoot %s: %v", clusterName, err)
 	}
 
@@ -259,7 +257,7 @@ func (r *SyncSnapshotReconciler) ReconcileSyncSnapshot(ctx context.Context,
 			if snapshot.VolumeSnapshotClassName == "csi-cinder-snapclass" {
 				missingSnapshots = append(missingSnapshots, snapshot)
 
-				err := r.newCreateSnapshot(ctx, c, snapshot.SnapshotName,
+				err := r.newCreateSnapshot(ctx, r.Client, snapshot.SnapshotName,
 					snapshot.SourcePvcName, snapshot.Namespace, syncSnapshot.Namespace, "Manually")
 
 				if err != nil {
@@ -276,7 +274,7 @@ func (r *SyncSnapshotReconciler) ReconcileSyncSnapshot(ctx context.Context,
 
 			extraSnapshots = append(extraSnapshots, snapshot)
 
-			err := r.newDeleteSnapshot(ctx, c, snapshot.SnapshotName, syncSnapshot.Namespace, snapshot.SourcePvcName, snapshot.Namespace)
+			err := r.newDeleteSnapshot(ctx, r.Client, snapshot.SnapshotName, syncSnapshot.Namespace, snapshot.SourcePvcName, snapshot.Namespace)
 
 			if err != nil {
 				klog.Errorf("[shoot] unable to sync snapshot %s for persistentVolumeName %s in namespace %s: %s",
@@ -500,7 +498,9 @@ func (r *SyncSnapshotReconciler) updateStatusWithError(
 	missingSnapshots, extraSnapshots []snapshotv1beta1.SnapshotStatus,
 	err error, msg string) (ctrl.Result, error) {
 
-	klog.Info("Reconcile Sync Failed")
+	log := log.FromContext(ctx)
+
+	log.V(1).Info("Reconcile Sync Failed")
 	meta.SetStatusCondition(&syncSnapshot.Status.Conditions, metav1.Condition{
 		Type:    "Available",
 		Status:  metav1.ConditionFalse,
@@ -511,7 +511,7 @@ func (r *SyncSnapshotReconciler) updateStatusWithError(
 	syncSnapshot.Status.ExtraSnapshot = extraSnapshots
 
 	if updateErr := r.Status().Update(ctx, syncSnapshot); updateErr != nil {
-		klog.Error(updateErr, "Failed to update Sync CRD status")
+		log.V(2).Error(updateErr, "Failed to update Sync CRD status")
 		return ctrl.Result{}, updateErr
 	}
 

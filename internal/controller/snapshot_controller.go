@@ -97,13 +97,13 @@ func (r *CreateSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			Status:  metav1.ConditionUnknown,
 			Reason:  "Reconciling",
 			Message: "Starting reconciliation"})
-		klog.Infof("Set Status Condition of Snapshot crd %v", snapshot.Status.Conditions)
+		klog.V(2).Infof("Set Status Condition of Snapshot crd %v", snapshot.Status.Conditions)
 		if err := r.Status().Update(ctx, snapshot); err != nil {
 			if apierrors.IsConflict(err) {
 				// If there's a conflict, requeue the request
 				return ctrl.Result{Requeue: true}, nil
 			}
-			log.Error(err, "Failed to update Snapshot status condition")
+			log.V(2).Error(err, "Failed to update Snapshot status condition")
 			return ctrl.Result{}, err
 		}
 
@@ -116,7 +116,7 @@ func (r *CreateSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		snapshotReturn, err := r.ReconcileCreateSnapshot(ctx, r.Client, snapshot)
 
 		if err != nil {
-			klog.Info("Reconcile createSnapshot Failed")
+			klog.V(1).Info("Reconcile createSnapshot Failed")
 			return r.handleSnapshotError(ctx, snapshot, snapshotReturn, err)
 		}
 
@@ -156,6 +156,8 @@ func (r *CreateSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 // This reconcile flow check the snapshot if it existed in shoot, if it is not existed then create a new snapshot base on the object name
 func (r *CreateSnapshotReconciler) ReconcileCreateSnapshot(ctx context.Context, c client.Client, createSnapshot *snapshotv1beta1.Snapshot) (snapshotv1beta1.PvSnapshotItem, error) {
+	log := log.FromContext(ctx)
+
 	SnapshotReturn := snapshotv1beta1.PvSnapshotItem{}
 	// get namespace in seed
 	namespace := createSnapshot.Namespace
@@ -166,7 +168,7 @@ func (r *CreateSnapshotReconciler) ReconcileCreateSnapshot(ctx context.Context, 
 		return SnapshotReturn, fmt.Errorf("unable to get shoot secret data kubeconfig in ns %s: %v", clusterName, err)
 	}
 	// create dynamic client from this kubeconfig data -> send request for crds
-	dynamicClientSet, err := CreateDynamicKubeClient(ctx, shootKubeconfigDataString)
+	dynamicClientSet, err := CreateDynamicKubeClient(ctx, shootKubeconfigDataString, clusterName)
 	if err != nil {
 		return SnapshotReturn, fmt.Errorf("unable to create dynamic shoot client set %s: %v", clusterName, err)
 	}
@@ -175,7 +177,7 @@ func (r *CreateSnapshotReconciler) ReconcileCreateSnapshot(ctx context.Context, 
 	// get snapshot list based on namespace
 	snapshotListReturn, err := getPvSnapshotListPerNamespace(dynamicClientSet, createSnapshot.Spec.Namespace, clusterName)
 	if err != nil {
-		klog.Errorf("Unable to get snapshot list in namespace %s ", createSnapshot.Spec.Namespace)
+		log.V(2).Error(err, "Unable to get snapshot list in namespace", createSnapshot.Spec.Namespace)
 		return SnapshotReturn, err
 	}
 
@@ -197,7 +199,7 @@ func (r *CreateSnapshotReconciler) ReconcileCreateSnapshot(ctx context.Context, 
 	// check if volumeSnapshotClasses existed
 	volumeSnapshotClassesExisted, err := checkVolumeSnapshotClasses(dynamicClientSet)
 	if err != nil {
-		klog.Infof("Cannot get volumeSnapshotClasses crds in shoot cluster")
+		klog.V(2).Infof("Cannot get volumeSnapshotClasses crds in shoot cluster")
 		return SnapshotReturn, err
 	}
 
@@ -205,14 +207,14 @@ func (r *CreateSnapshotReconciler) ReconcileCreateSnapshot(ctx context.Context, 
 	if !volumeSnapshotClassesExisted {
 		_, err = createVolumeSnapshotClasses(dynamicClientSet)
 		if err != nil {
-			klog.Infof("The volumeSnapshotClassName already existed")
+			klog.V(2).Infof("The volumeSnapshotClassName already existed")
 		}
 	}
 
 	// create Snapshot base on input
 	err = r.createSnapshot(dynamicClientSet, createSnapshot.Name, volumeSnapshotClassName, createSnapshot.Spec.PvcName, createSnapshot.Spec.Namespace)
 	if err != nil {
-		klog.Errorf("unable to create snapshot for persistentVolumeName %s in namespace %s", createSnapshot.Spec.PvcName, createSnapshot.Spec.Namespace)
+		log.V(2).Error(err, "unable to create snapshot for persistentVolumeName %s in namespace %s", createSnapshot.Spec.PvcName, createSnapshot.Spec.Namespace)
 		return SnapshotReturn, err
 	}
 
@@ -307,7 +309,7 @@ func (r *CreateSnapshotReconciler) DeleteSnapshot(ctx context.Context, c client.
 		return fmt.Errorf("unable to get shoot secret data kubeconfig in ns %s: %v", clusterName, err)
 	}
 	// create dynamic client from this kubeconfig data -> send request for crds
-	dynamicClientSet, err := CreateDynamicKubeClient(ctx, shootKubeconfigDataString)
+	dynamicClientSet, err := CreateDynamicKubeClient(ctx, shootKubeconfigDataString, clusterName)
 	if err != nil {
 		return fmt.Errorf("unable to create dynamic shoot client set %s: %v", clusterName, err)
 	}
@@ -395,7 +397,7 @@ func (r *CreateSnapshotReconciler) handleSnapshotSuccess(ctx context.Context,
 	// Check if snapshot is ready
 	if snapshotReturn.CreationTime == "N/A" || !snapshotReturn.ReadyToUse {
 		// If snapshot is not ready, requeue with a delay
-		log.Info("Snapshot is not ready yet, will check again", "snapshot", snapshot.Name)
+		log.V(1).Info("Snapshot is not ready yet, will check again", "snapshot", snapshot.Name)
 		// Retry Count
 		retryCount := 0
 
@@ -408,7 +410,7 @@ func (r *CreateSnapshotReconciler) handleSnapshotSuccess(ctx context.Context,
 		}
 
 		if retryCount >= 5 && snapshotReturn.CreationTime == "N/A" {
-			log.Info("Reached retry limit for snapshot creation time", "snapshot", snapshot.Name)
+			log.V(1).Info("Reached retry limit for snapshot creation time", "snapshot", snapshot.Name)
 			newStatus.CreationStatus = "Failed"
 			newStatus.CreationTime = "Timeout exceeded"
 			meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{
@@ -427,7 +429,7 @@ func (r *CreateSnapshotReconciler) handleSnapshotSuccess(ctx context.Context,
 						// If there's a conflict, requeue the request
 						return ctrl.Result{Requeue: true}, nil
 					}
-					log.Error(err, "Failed to update snapshot status after timeout")
+					log.V(2).Error(err, "Failed to update snapshot status after timeout")
 					return ctrl.Result{}, err
 				}
 			}
@@ -441,11 +443,11 @@ func (r *CreateSnapshotReconciler) handleSnapshotSuccess(ctx context.Context,
 			if apierrors.IsConflict(err) {
 				return ctrl.Result{Requeue: true}, nil
 			}
-			log.Error(err, "Failed to update snapshot annotations")
+			log.V(2).Error(err, "Failed to update snapshot annotations")
 			return ctrl.Result{RequeueAfter: 1 * time.Minute}, err
 		}
 
-		log.Info("Retrying snapshot %s for %s times", snapshot.Name, retryCount)
+		log.V(2).Info("Retrying snapshot %s for %s times", snapshot.Name, retryCount)
 
 		// Update status to indicate snapshot is in progress
 		newStatus.CreationStatus = "InProgress"
@@ -485,7 +487,7 @@ func (r *CreateSnapshotReconciler) handleSnapshotSuccess(ctx context.Context,
 			return ctrl.Result{}, err
 		}
 
-		log.Info("Snapshot is in progress", "snapshot", snapshot.Name, "status", newStatus.CreationStatus)
+		log.V(2).Info("Snapshot is in progress", "snapshot", snapshot.Name, "status", newStatus.CreationStatus)
 
 		return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
 	}
@@ -520,7 +522,7 @@ func (r *CreateSnapshotReconciler) handleSnapshotSuccess(ctx context.Context,
 		return ctrl.Result{}, err
 	}
 
-	log.V(1).Info("Reconcile", "Snapshot has been successfully created and is ready", snapshot.Namespace)
+	log.Info("Reconcile", "Snapshot has been successfully created and is ready", snapshot.Namespace)
 	return ctrl.Result{}, nil
 }
 
