@@ -110,9 +110,19 @@ func CreateShootKubeClient(ctx context.Context, shootKubeconfigDataString, clust
 }
 
 // Create dynamic shoot kube-client from shoot kubeconfig file
-func CreateDynamicKubeClient(ctx context.Context, shootKubeconfigDataString string) (*dynamic.DynamicClient, error) {
+func CreateDynamicKubeClient(ctx context.Context, shootKubeconfigDataString string, clusterName string) (*dynamic.DynamicClient, error) {
 	shootKubeconfigDataByte := []byte(shootKubeconfigDataString)
-	shootKubeconfigPath := "/tmp/kubeconfig"
+
+	// Create directory path
+	dirPath := filepath.Dir("/tmp/kubeconfig/")
+
+	// Create the directory if it doesn't exist
+	if err := os.MkdirAll(dirPath, 0755); err != nil {
+		return nil, fmt.Errorf("unable to create directory for kubeconfig: %v", err)
+	}
+
+	shootKubeconfigPath := filepath.Join("/tmp/kubeconfig/", clusterName)
+
 	// Write the kubeconfig data to a temporary file
 	err := os.WriteFile(shootKubeconfigPath, shootKubeconfigDataByte, 0644)
 	if err != nil {
@@ -125,7 +135,7 @@ func CreateDynamicKubeClient(ctx context.Context, shootKubeconfigDataString stri
 	dynamicClient, err := dynamic.NewForConfig(shootConfig)
 	if err != nil {
 		fmt.Printf("Error creating dynamic client: %s\n", err)
-		os.Exit(1)
+		return nil, fmt.Errorf("unable to build dynamic client from kubeconfig file: %v", err)
 	}
 	return dynamicClient, nil
 }
@@ -502,10 +512,10 @@ func convertTimeNow2String(now time.Time) string {
 	return converted
 }
 
-func getPvSnapshotListPerNamespace(dynamicClienSet *dynamic.DynamicClient, namespace string) ([]snapshotv1beta1.PvSnapshotItem, error) {
+func getPvSnapshotListPerNamespace(dynamicClienSet *dynamic.DynamicClient, namespace string, clusterName string) ([]snapshotv1beta1.PvSnapshotItem, error) {
 	snapshotList := []snapshotv1beta1.PvSnapshotItem{}
 
-	klog.Infof("Checking snapshot in namespace: %s", namespace)
+	klog.V(2).Infof("[Shoot: %s]\nChecking snapshot in namespace: %s", clusterName, namespace)
 	resp, err := getVolumeSnapShotInShoot(dynamicClienSet, namespace)
 	if err != nil {
 		fmt.Printf("Unable to get Snapshot List in shoot cluster namespace: %s", namespace)

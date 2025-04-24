@@ -76,11 +76,11 @@ func (r *SchedulerSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	if !controllerutil.ContainsFinalizer(scheduleSnapshot, SnapshotFinalizerName) {
 		controllerutil.AddFinalizer(scheduleSnapshot, SnapshotFinalizerName)
 		if err := r.Update(ctx, scheduleSnapshot); err != nil {
-			log.Error(err, "Failed to update Snapshot controller finalizer")
+			log.V(2).Error(err, "Failed to update Snapshot controller finalizer")
 			return ctrl.Result{}, err
 		}
 		if err := r.Get(ctx, req.NamespacedName, scheduleSnapshot); err != nil {
-			log.Error(err, "Failed to re-fetch Snapshot list in shoot")
+			log.V(2).Error(err, "Failed to re-fetch Snapshot list in shoot")
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{}, nil
@@ -91,36 +91,25 @@ func (r *SchedulerSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			Status:  metav1.ConditionUnknown,
 			Reason:  "Reconciling",
 			Message: "Starting reconciliation"})
-		klog.Infof("Set Status Condition of Snapshot crd %v", scheduleSnapshot.Status.Conditions)
+		log.V(2).Info("Set Status Condition of Snapshot crd", scheduleSnapshot.Status.Conditions)
 		if err := r.Status().Update(ctx, scheduleSnapshot); err != nil {
-			log.Error(err, "Failed to update Snapshot status condition")
+			log.V(2).Error(err, "Failed to update Snapshot status condition")
 			return ctrl.Result{}, err
 		}
-
-		// Let's re-fetch the memcached Custom Resource after updating the status
-		// so that we have the latest state of the resource on the cluster and we will avoid
-		// raising the error "the object has been modified, please apply
-		// your changes to the latest version and try again" which would re-trigger the reconciliation
-		// if we try to update it again in the following operations
-		if err := r.Get(ctx, req.NamespacedName, scheduleSnapshot); err != nil {
-			log.Error(err, "Failed to re-fetch Snapshot list")
-			return ctrl.Result{}, err
-		}
-		klog.Infof("Fetch of Snapshot %v", scheduleSnapshot.Status.Conditions)
 	}
 
 	// define the finalizer for PVC
 	if scheduleSnapshot.ObjectMeta.DeletionTimestamp.IsZero() {
 		// Reconcile snapshot Schedule
-		requeueAfter, err := r.ReconcileScheduleSnapshot(ctx, r.Client, scheduleSnapshot)
+		requeueAfter, err := r.ReconcileScheduleSnapshot(ctx, scheduleSnapshot)
 		if err != nil {
-			klog.Info("Reconcile snapshot Failed")
+			log.V(2).Info("Reconcile snapshot Failed")
 			//update status
 			meta.SetStatusCondition(&scheduleSnapshot.Status.Conditions, metav1.Condition{Type: "Available",
 				Status: metav1.ConditionFalse, Reason: "Reconciling",
 				Message: fmt.Sprintf("Failed to reconcile for the custom resource (%s): (%s)", scheduleSnapshot.Name, err)})
 			if err := r.Status().Update(ctx, scheduleSnapshot); err != nil {
-				log.Error(err, "Failed to update snapshot crds status")
+				log.V(2).Error(err, "Failed to update snapshot crds status")
 				return ctrl.Result{RequeueAfter: requeueAfter}, err
 			}
 			return ctrl.Result{RequeueAfter: requeueAfter}, err
@@ -130,7 +119,7 @@ func (r *SchedulerSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			Message: fmt.Sprintf("Snapshot schedule %s in shoot %s is reconciled", scheduleSnapshot.Name, scheduleSnapshot.Namespace)})
 
 		if err := r.Status().Update(ctx, scheduleSnapshot); err != nil {
-			log.Error(err, "Failed to update snapshot crds status")
+			log.V(2).Error(err, "Failed to update snapshot crds status")
 			return ctrl.Result{RequeueAfter: requeueAfter}, err
 		}
 		return ctrl.Result{RequeueAfter: requeueAfter}, err
@@ -140,14 +129,14 @@ func (r *SchedulerSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			Message: fmt.Sprintf("Performing finalizer operations for the custom resource: %s ", scheduleSnapshot.Name)})
 
 		if err := r.Status().Update(ctx, scheduleSnapshot); err != nil {
-			log.Error(err, "Failed to update createSnapshot crds status")
+			log.V(2).Error(err, "Failed to update createSnapshot crds status")
 			return ctrl.Result{}, err
 		}
 		// The object is being deleted
 		ns := &corev1.Namespace{}
 		err := r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: req.Namespace}, ns)
 		if err != nil {
-			log.Error(err, "unable to fetch Namespace")
+			log.V(2).Error(err, "unable to fetch Namespace")
 			return ctrl.Result{}, err
 		}
 		if !ns.ObjectMeta.DeletionTimestamp.IsZero() {
@@ -158,11 +147,7 @@ func (r *SchedulerSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			}
 		}
 		if controllerutil.ContainsFinalizer(scheduleSnapshot, SnapshotFinalizerName) {
-			// if err := r.delete(ctx, log, falco); err != nil {
-			// 	return ctrl.Result{}, err
-			// }
-			// log.V(1).Info("Reconcile", "Falco is deleted successfully in shoot", req.Namespace)
-			// remove our finalizer from the list and update it.
+
 			if ok := controllerutil.RemoveFinalizer(scheduleSnapshot, SnapshotFinalizerName); !ok {
 				log.Error(err, "Failed to remove finalizer for Snapshot crds")
 				return ctrl.Result{Requeue: true}, nil
@@ -183,18 +168,16 @@ func (r *SchedulerSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Re
 // In retention phase, get all the snapshot and compare if it is duetime.
 
 func (r *SchedulerSnapshotReconciler) ReconcileScheduleSnapshot(
-	ctx context.Context, c client.Client,
-	scheduleSnapshot *snapshotv1beta1.SchedulerSnapshot) (time.Duration, error) {
+	ctx context.Context, scheduleSnapshot *snapshotv1beta1.SchedulerSnapshot) (time.Duration, error) {
 
 	log := log.FromContext(ctx)
 	requeueAfter := 20 * time.Minute
-	//snapshotSchedulerList2Update := snapshotv1beta1.SnapshotScheduler{}
 
 	// get namespace in seed
 	namespace := scheduleSnapshot.Namespace
 	clusterName := namespace[4:]
 	// get kubeconfig
-	shootKubeconfigDataString, err := GetSecretShootKubeconfig(ctx, c, namespace)
+	shootKubeconfigDataString, err := GetSecretShootKubeconfig(ctx, r.Client, namespace)
 	if err != nil {
 		return requeueAfter, fmt.Errorf("unable to get shoot secret data kubeconfig in ns %s: %v", clusterName, err)
 	}
@@ -208,7 +191,7 @@ func (r *SchedulerSnapshotReconciler) ReconcileScheduleSnapshot(
 	if err != nil {
 		return requeueAfter, fmt.Errorf("unable to create shoot client set %s: %v", clusterName, err)
 	}
-	klog.Infof("List of namespace %v", namespaceList)
+	log.V(2).Info("Checking the list of namespace", namespaceList, "shoot", clusterName)
 
 	// get all PVC existing in shoot
 	pvcList, err := getPVC(shootClientSet, namespaceList)
@@ -242,7 +225,7 @@ func (r *SchedulerSnapshotReconciler) ReconcileScheduleSnapshot(
 					validated = false
 				}
 				requeuAfter := nextSnapshotDuration(parseCron, parseLocation, now)
-				klog.Infof("Time to the next snapshot is: %s", requeuAfter)
+				klog.V(2).Infof("Time to the next snapshot is: %s", requeuAfter)
 				if validated {
 					//snapshotSchedulerList2Update = scheduleSnapshot.Spec.SnapshotScheduler
 					// -> check duration time to request
@@ -250,11 +233,11 @@ func (r *SchedulerSnapshotReconciler) ReconcileScheduleSnapshot(
 					// -> if it is time -> run request
 					// check condition of the time.Now() in compare to the previous snapshot time
 					previousTime := previousSnapshotDuration(parseCron, parseLocation, now)
-					klog.Infof("Time to the last snapshot is: %s", previousTime)
+					klog.V(2).Infof("Time to the last snapshot is: %s", previousTime)
 
 					if previousTime < time.Second && requeuAfter > 0 {
 						// run snapshot
-						err := newCreateConfigSnapshot(ctx, c, scheduleSnapshot)
+						err := newCreateConfigSnapshot(ctx, r.Client, scheduleSnapshot)
 						if err != nil {
 							klog.Errorf("unable to create config snapshot: %s", err)
 						}
@@ -271,7 +254,7 @@ func (r *SchedulerSnapshotReconciler) ReconcileScheduleSnapshot(
 			if scheduleSnapshot.Spec.SnapshotScheduler.RetentionPolicy.TimeUnits != "" {
 				if scheduleSnapshot.Spec.SnapshotScheduler.RetentionPolicy.Max > 0 {
 					// Get snapshot list based on namespace
-					configSnapshotListReturn, err := r.getConfigSnapshotList(ctx, c)
+					configSnapshotListReturn, err := r.getConfigSnapshotList(ctx, r.Client, scheduleSnapshot.Namespace)
 					if err != nil {
 						klog.Errorf("Unable to get configSnapshot list for Retention Reconciliation")
 						// Early exit if getting snapshot list fails
@@ -305,7 +288,7 @@ func (r *SchedulerSnapshotReconciler) ReconcileScheduleSnapshot(
 
 							// Compare duration with maxDuration
 							if duration >= maxDuration*unitDuration {
-								if err := newConfigDeleteSnapshot(ctx, c, configSnapshot.Name, configSnapshot.Namespace); err != nil {
+								if err := newConfigDeleteSnapshot(ctx, r.Client, configSnapshot.Name, configSnapshot.Namespace); err != nil {
 									klog.Errorf("Unable to delete config snapshot %s in namespace %s due to exceed Retention",
 										configSnapshot.Name, configSnapshot.Namespace)
 								} else {
@@ -344,16 +327,16 @@ func (r *SchedulerSnapshotReconciler) ReconcileScheduleSnapshot(
 					// check validate and convert to cron.Schedule type
 					parseCron, err := ValidateCronSpec(scheduleSnapshot.Spec.SnapshotScheduler.Schedules[i].Start)
 					if err != nil {
-						log.Error(err, "not a valid cron job")
+						log.V(2).Error(err, "not a valid cron job")
 						validated = false
 					}
 					parseLocation, err := ValidateScheduleLocation(scheduleSnapshot.Spec.SnapshotScheduler.Schedules[i].Location)
 					if err != nil {
-						log.Error(err, "not a valid location timestamp")
+						log.V(2).Error(err, "not a valid location timestamp")
 						validated = false
 					}
 					requeuAfter := nextSnapshotDuration(parseCron, parseLocation, now)
-					klog.Infof("Time to the next snapshot is: %s", requeuAfter)
+					klog.V(2).Infof("Time to the next snapshot is: %s", requeuAfter)
 
 					if pvcExisted && validated {
 						//snapshotSchedulerList2Update = scheduleSnapshot.Spec.SnapshotScheduler
@@ -362,11 +345,11 @@ func (r *SchedulerSnapshotReconciler) ReconcileScheduleSnapshot(
 						// -> if it is time -> run request
 						// check condition of the time.Now() in compare to the previous snapshot time
 						previousTime := previousSnapshotDuration(parseCron, parseLocation, now)
-						klog.Infof("Time to the last snapshot is: %s", previousTime)
+						klog.V(2).Infof("Time to the last snapshot is: %s", previousTime)
 
-						if previousTime < time.Second && requeuAfter > 0 {
+						if previousTime < 10*time.Second && requeuAfter > 0 {
 							// run snapshot
-							err := newCreateSnapshot(ctx, c, pvcSnapshotClass.PvcName, pvcSnapshotClass.Namespace, scheduleSnapshot.Namespace, "Scheduled")
+							err := newCreateSnapshot(ctx, r.Client, pvcSnapshotClass.PvcName, pvcSnapshotClass.Namespace, scheduleSnapshot.Namespace, "Scheduled")
 							if err != nil {
 								klog.Errorf("unable to create snapshot for persistentVolumeName %s in namespace %s: %s", pvcSnapshotClass.PvcName, pvcSnapshotClass.Namespace, err)
 							}
@@ -384,7 +367,7 @@ func (r *SchedulerSnapshotReconciler) ReconcileScheduleSnapshot(
 			if scheduleSnapshot.Spec.SnapshotScheduler.RetentionPolicy.TimeUnits != "" {
 				if scheduleSnapshot.Spec.SnapshotScheduler.RetentionPolicy.Max > 0 {
 					// Get snapshot list based on namespace
-					snapshotListReturn, err := r.getSnapshotList(ctx, c)
+					snapshotListReturn, err := r.getSnapshotList(ctx, r.Client, scheduleSnapshot.Namespace)
 					if err != nil {
 						klog.Errorf("Unable to get snapshot list in namespace %s for Retention Reconciliation", pvcSnapshotClass.Namespace)
 						continue // Early exit if getting snapshot list fails
@@ -418,17 +401,17 @@ func (r *SchedulerSnapshotReconciler) ReconcileScheduleSnapshot(
 								klog.Errorf("Error calculating duration for snapshot %s: %v", snapshot.Status.SnapshotName, err)
 								continue
 							}
-							klog.Infof("The duration from creation time of Snapshot %s to now is: %s", snapshot.Status.SnapshotName, duration)
+							klog.V(2).Infof("The duration from creation time of Snapshot %s to now is: %s", snapshot.Status.SnapshotName, duration)
 
 							// Compare duration with maxDuration
 							if duration >= maxDuration*unitDuration {
 								if snapshot.Spec.NumInUse > 0 {
 									continue
 								}
-								if err := newDeleteSnapshot(ctx, c, snapshot.Name, snapshot.Namespace, snapshot.Spec.PvcName, snapshot.Spec.Namespace); err != nil {
+								if err := newDeleteSnapshot(ctx, r.Client, snapshot.Name, snapshot.Namespace, snapshot.Spec.PvcName, snapshot.Spec.Namespace); err != nil {
 									klog.Errorf("Unable to delete snapshot %s in namespace %s due to exceed Retention", snapshot.Status.SnapshotName, pvcSnapshotClass.Namespace)
 								} else {
-									klog.Infof("Successfully deleted snapshot %s in namespace %s due to Retention", snapshot.Status.SnapshotName, pvcSnapshotClass.Namespace)
+									klog.V(2).Infof("Successfully deleted snapshot %s in namespace %s due to Retention", snapshot.Status.SnapshotName, pvcSnapshotClass.Namespace)
 								}
 							} else {
 								timeLeft := maxDuration*unitDuration - duration
@@ -448,12 +431,12 @@ func (r *SchedulerSnapshotReconciler) ReconcileScheduleSnapshot(
 		sort.Slice(requeuAfterList, func(i, j int) bool {
 			return requeuAfterList[i] < requeuAfterList[j]
 		})
-		klog.Infof("the requeue list is: %v", requeuAfterList)
+		klog.V(2).Infof("the requeue list is: %v", requeuAfterList)
 		// -> pick the shortest time to reconcile
 		requeueAfter = requeuAfterList[0]
 	}
 	// -> requeue
-	klog.Infof("the reconcile will requeue after: %s", requeueAfter)
+	klog.Infof("The Scheduler [%s] of Shoot %s reconcile will requeue after: %s", scheduleSnapshot.Name, scheduleSnapshot.Namespace, requeueAfter)
 
 	if scheduleSnapshot.Annotations[SnapshotReconcileAnnotation] == "true" {
 		delete(scheduleSnapshot.Annotations, SnapshotReconcileAnnotation)
@@ -464,18 +447,18 @@ func (r *SchedulerSnapshotReconciler) ReconcileScheduleSnapshot(
 	return requeueAfter, nil
 }
 
-func (r *SchedulerSnapshotReconciler) getSnapshotList(ctx context.Context, c client.Client) (snapshotv1beta1.SnapshotList, error) {
+func (r *SchedulerSnapshotReconciler) getSnapshotList(ctx context.Context, c client.Client, namespace string) (snapshotv1beta1.SnapshotList, error) {
 	snapshotList := &snapshotv1beta1.SnapshotList{}
-	if err := c.List(ctx, snapshotList); err != nil {
+	if err := c.List(ctx, snapshotList, client.InNamespace(namespace)); err != nil {
 		klog.Errorf("Error listing Snapshots: %s", err)
 		return *snapshotList, err
 	}
 	return *snapshotList, nil
 }
 
-func (r *SchedulerSnapshotReconciler) getConfigSnapshotList(ctx context.Context, c client.Client) (snapshotv1beta1.CreateKubeSnapshotList, error) {
+func (r *SchedulerSnapshotReconciler) getConfigSnapshotList(ctx context.Context, c client.Client, namespace string) (snapshotv1beta1.CreateKubeSnapshotList, error) {
 	configSnapshotList := &snapshotv1beta1.CreateKubeSnapshotList{}
-	if err := c.List(ctx, configSnapshotList); err != nil {
+	if err := c.List(ctx, configSnapshotList, client.InNamespace(namespace)); err != nil {
 		klog.Errorf("Error listing Snapshots: %s", err)
 		return *configSnapshotList, err
 	}

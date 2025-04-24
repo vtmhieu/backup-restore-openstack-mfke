@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -66,7 +67,7 @@ type CreateSnapshotReconciler struct {
 func (r *CreateSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 	snapshot := &snapshotv1beta1.Snapshot{}
-	// pvSnapshot := &snapshotv1beta1.PvSnapshot{}
+
 	log.Info("Reconcile", "req", req)
 
 	// Check existance + finalizer
@@ -78,41 +79,35 @@ func (r *CreateSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, fmt.Errorf("error retrieving object from store: %w", err)
 	}
 
+	// Handle finalizer
 	if !controllerutil.ContainsFinalizer(snapshot, SnapshotFinalizerName) {
 		controllerutil.AddFinalizer(snapshot, SnapshotFinalizerName)
 		if err := r.Update(ctx, snapshot); err != nil {
 			log.Error(err, "Failed to update Snapshot controller finalizer")
 			return ctrl.Result{}, err
 		}
-		if err := r.Get(ctx, req.NamespacedName, snapshot); err != nil {
-			log.Error(err, "Failed to re-fetch Snapshot list in shoot")
-			return ctrl.Result{}, err
-		}
+
 		return ctrl.Result{}, nil
 	}
 
+	// Initialize status if empty
 	if len(snapshot.Status.Conditions) == 0 {
 		meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{
 			Type:    "Available",
 			Status:  metav1.ConditionUnknown,
 			Reason:  "Reconciling",
 			Message: "Starting reconciliation"})
-		klog.Infof("Set Status Condition of Snapshot crd %v", snapshot.Status.Conditions)
+		klog.V(2).Infof("Set Status Condition of Snapshot crd %v", snapshot.Status.Conditions)
 		if err := r.Status().Update(ctx, snapshot); err != nil {
-			log.Error(err, "Failed to update Snapshot status condition")
+			if apierrors.IsConflict(err) {
+				// If there's a conflict, requeue the request
+				return ctrl.Result{Requeue: true}, nil
+			}
+			log.V(2).Error(err, "Failed to update Snapshot status condition")
 			return ctrl.Result{}, err
 		}
 
-		// Let's re-fetch the memcached Custom Resource after updating the status
-		// so that we have the latest state of the resource on the cluster and we will avoid
-		// raising the error "the object has been modified, please apply
-		// your changes to the latest version and try again" which would re-trigger the reconciliation
-		// if we try to update it again in the following operations
-		if err := r.Get(ctx, req.NamespacedName, snapshot); err != nil {
-			log.Error(err, "Failed to re-fetch Snapshot list")
-			return ctrl.Result{}, err
-		}
-		klog.Infof("Fetch of Snapshot %v", snapshot.Status.Conditions)
+		return ctrl.Result{}, nil
 	}
 
 	// define the finalizer for PVC
@@ -121,7 +116,7 @@ func (r *CreateSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		snapshotReturn, err := r.ReconcileCreateSnapshot(ctx, r.Client, snapshot)
 
 		if err != nil {
-			klog.Info("Reconcile createSnapshot Failed")
+			klog.V(1).Info("Reconcile createSnapshot Failed")
 			return r.handleSnapshotError(ctx, snapshot, snapshotReturn, err)
 		}
 
@@ -161,28 +156,32 @@ func (r *CreateSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 // This reconcile flow check the snapshot if it existed in shoot, if it is not existed then create a new snapshot base on the object name
 func (r *CreateSnapshotReconciler) ReconcileCreateSnapshot(ctx context.Context, c client.Client, createSnapshot *snapshotv1beta1.Snapshot) (snapshotv1beta1.PvSnapshotItem, error) {
+	log := log.FromContext(ctx)
+
 	SnapshotReturn := snapshotv1beta1.PvSnapshotItem{}
 	// get namespace in seed
 	namespace := createSnapshot.Namespace
-	clusterName := namespace[4:]
+	clusterName := strings.TrimPrefix(namespace, "fke-")
 	// get kubeconfig
 	shootKubeconfigDataString, err := GetSecretShootKubeconfig(ctx, c, namespace)
 	if err != nil {
 		return SnapshotReturn, fmt.Errorf("unable to get shoot secret data kubeconfig in ns %s: %v", clusterName, err)
 	}
 	// create dynamic client from this kubeconfig data -> send request for crds
-	dynamicClientSet, err := CreateDynamicKubeClient(ctx, shootKubeconfigDataString)
+	dynamicClientSet, err := CreateDynamicKubeClient(ctx, shootKubeconfigDataString, clusterName)
 	if err != nil {
 		return SnapshotReturn, fmt.Errorf("unable to create dynamic shoot client set %s: %v", clusterName, err)
 	}
 
 	// check if snapshot existed?
 	// get snapshot list based on namespace
-	snapshotListReturn, err := getPvSnapshotListPerNamespace(dynamicClientSet, createSnapshot.Spec.Namespace)
+	snapshotListReturn, err := getPvSnapshotListPerNamespace(dynamicClientSet, createSnapshot.Spec.Namespace, clusterName)
 	if err != nil {
-		klog.Errorf("Unabled to get snapshot list in namespace %s ", createSnapshot.Spec.Namespace)
+		log.V(2).Error(err, "Unable to get snapshot list in namespace", createSnapshot.Spec.Namespace)
+		return SnapshotReturn, err
 	}
 
+	// Check if snapshot already exists
 	for _, snapshot := range snapshotListReturn {
 		if snapshot.SnapshotName == createSnapshot.Name &&
 			snapshot.SourcePvcName == createSnapshot.Spec.PvcName {
@@ -192,38 +191,58 @@ func (r *CreateSnapshotReconciler) ReconcileCreateSnapshot(ctx context.Context, 
 					return snapshot, fmt.Errorf("error to delete annotation %s in createSnapshot resource: [%v]", CreateSnapshotEnabledAnnotation, err)
 				}
 			}
-			return snapshot, err
+			return snapshot, nil
 		}
 	}
 
 	// since the snapshot is not existed -> create new snapshot
-
 	// check if volumeSnapshotClasses existed
 	volumeSnapshotClassesExisted, err := checkVolumeSnapshotClasses(dynamicClientSet)
 	if err != nil {
-		klog.Infof("Cannot get volumeSnapshotClasses crds in shoot cluster")
+		klog.V(2).Infof("Cannot get volumeSnapshotClasses crds in shoot cluster")
+		return SnapshotReturn, err
 	}
-	// not exist -> creat volume snapshot classes
+
+	// not exist -> create volume snapshot classes
 	if !volumeSnapshotClassesExisted {
 		_, err = createVolumeSnapshotClasses(dynamicClientSet)
 		if err != nil {
-			klog.Infof("The volumeSnapshotClassName already existed")
+			klog.V(2).Infof("The volumeSnapshotClassName already existed")
 		}
 	}
 
 	// create Snapshot base on input
 	err = r.createSnapshot(dynamicClientSet, createSnapshot.Name, volumeSnapshotClassName, createSnapshot.Spec.PvcName, createSnapshot.Spec.Namespace)
 	if err != nil {
-		klog.Errorf("unable to create snapshot for persistentVolumeName %s in namespace %s", createSnapshot.Spec.PvcName, createSnapshot.Spec.Namespace)
+		log.V(2).Error(err, "unable to create snapshot for persistentVolumeName %s in namespace %s", createSnapshot.Spec.PvcName, createSnapshot.Spec.Namespace)
+		return SnapshotReturn, err
 	}
 
-	if createSnapshot.Annotations[CreateSnapshotEnabledAnnotation] == "true" {
-		delete(createSnapshot.Annotations, CreateSnapshotEnabledAnnotation)
-		if err := r.Update(ctx, createSnapshot); err != nil {
-			return SnapshotReturn, fmt.Errorf("error to delete annotation %s in createSnapshot resource: [%v]", CreateSnapshotEnabledAnnotation, err)
+	// Wait for snapshot to be created and get its status
+	maxRetries := 5
+	for i := 0; i < maxRetries; i++ {
+		time.Sleep(2 * time.Second) // Wait before checking status
+		snapshotListReturn, err = getPvSnapshotListPerNamespace(dynamicClientSet, createSnapshot.Spec.Namespace, clusterName)
+		if err != nil {
+			klog.Errorf("Unable to get snapshot list in namespace %s ", createSnapshot.Spec.Namespace)
+			continue
+		}
+
+		for _, snapshot := range snapshotListReturn {
+			if snapshot.SnapshotName == createSnapshot.Name &&
+				snapshot.SourcePvcName == createSnapshot.Spec.PvcName {
+				if createSnapshot.Annotations[CreateSnapshotEnabledAnnotation] == "true" {
+					delete(createSnapshot.Annotations, CreateSnapshotEnabledAnnotation)
+					if err := r.Update(ctx, createSnapshot); err != nil {
+						return snapshot, fmt.Errorf("error to delete annotation %s in createSnapshot resource: [%v]", CreateSnapshotEnabledAnnotation, err)
+					}
+				}
+				return snapshot, nil
+			}
 		}
 	}
-	return SnapshotReturn, err
+
+	return SnapshotReturn, fmt.Errorf("snapshot creation timed out after %d retries", maxRetries)
 }
 
 func (r *CreateSnapshotReconciler) createSnapshot(dynamicClientSet *dynamic.DynamicClient, snapshotName string, volumeSnapshotClassName string, pvcName string, namespace string) error {
@@ -283,21 +302,21 @@ func deleteSnapshot(dynamicClientSet *dynamic.DynamicClient, snapshotName string
 func (r *CreateSnapshotReconciler) DeleteSnapshot(ctx context.Context, c client.Client, DeleteSnapshot *snapshotv1beta1.Snapshot) error {
 	// get namespace in seed
 	namespace := DeleteSnapshot.Namespace
-	clusterName := namespace[4:]
+	clusterName := strings.TrimPrefix(namespace, "fke-")
 	// get kubeconfig
 	shootKubeconfigDataString, err := GetSecretShootKubeconfig(ctx, c, namespace)
 	if err != nil {
 		return fmt.Errorf("unable to get shoot secret data kubeconfig in ns %s: %v", clusterName, err)
 	}
 	// create dynamic client from this kubeconfig data -> send request for crds
-	dynamicClientSet, err := CreateDynamicKubeClient(ctx, shootKubeconfigDataString)
+	dynamicClientSet, err := CreateDynamicKubeClient(ctx, shootKubeconfigDataString, clusterName)
 	if err != nil {
 		return fmt.Errorf("unable to create dynamic shoot client set %s: %v", clusterName, err)
 	}
 
 	// check if snapshot existed?
 	// get snapshot list based on namespace
-	snapshotListReturn, err := getPvSnapshotListPerNamespace(dynamicClientSet, DeleteSnapshot.Spec.Namespace)
+	snapshotListReturn, err := getPvSnapshotListPerNamespace(dynamicClientSet, DeleteSnapshot.Spec.Namespace, clusterName)
 	if err != nil {
 		klog.Errorf("Unabled to get snapshot list in namespace %s ", DeleteSnapshot.Spec.Namespace)
 	}
@@ -346,49 +365,164 @@ func (r *CreateSnapshotReconciler) handleSnapshotError(
 	newStatus := r.buildSnapshotStatus(snapshot, snapshotReturn, "Failed")
 	if err := r.updateSnapshotStatus(ctx, snapshot, newStatus); err != nil {
 		klog.Error(err, "Failed to update snapshot CRD status")
-		return ctrl.Result{RequeueAfter: 2 * time.Minute}, err
+		return ctrl.Result{RequeueAfter: time.Minute}, err
 	}
 
-	meta.SetStatusCondition(
-		&snapshot.Status.Conditions,
-		metav1.Condition{
+	failedMessage := fmt.Sprintf("Failed to create snapshot for PVC %s: %s", snapshot.Spec.PvcName, err.Error())
+	failedCondition := meta.FindStatusCondition(snapshot.Status.Conditions, "Available")
+
+	if failedCondition == nil || failedCondition.Status != metav1.ConditionFalse || failedCondition.Message != failedMessage {
+		meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{
 			Type:    "Available",
 			Status:  metav1.ConditionFalse,
-			Reason:  "Create",
-			Message: fmt.Sprintf("Failed to create snapshot for the PVC (%s): (%s)", snapshot.Spec.PvcName, err.Error()),
+			Reason:  "CreateFailed",
+			Message: failedMessage,
 		})
 
-	if err := r.Status().Update(ctx, snapshot); err != nil {
-		klog.Error(err, "Failed to update Snapshot status condition")
-		return ctrl.Result{RequeueAfter: 2 * time.Minute}, err
+		if err := r.Status().Update(ctx, snapshot); err != nil {
+			klog.Error(err, "Failed to update Snapshot status condition")
+			return ctrl.Result{RequeueAfter: time.Minute}, err
+		}
 	}
 
-	return ctrl.Result{}, err
+	return ctrl.Result{RequeueAfter: time.Minute}, err
 }
 
 func (r *CreateSnapshotReconciler) handleSnapshotSuccess(ctx context.Context,
 	snapshot *snapshotv1beta1.Snapshot, snapshotReturn snapshotv1beta1.PvSnapshotItem) (ctrl.Result, error) {
+	log := log.FromContext(ctx)
+
 	newStatus := r.buildSnapshotStatus(snapshot, snapshotReturn, "Succeeded")
-	if err := r.updateSnapshotStatus(ctx, snapshot, newStatus); err != nil {
-		klog.Error(err, "Failed to update snapshot CRD status")
-		return ctrl.Result{}, err
+
+	// Check if snapshot is ready
+	if snapshotReturn.CreationTime == "N/A" || !snapshotReturn.ReadyToUse {
+		// If snapshot is not ready, requeue with a delay
+		log.V(1).Info("Snapshot is not ready yet, will check again", "snapshot", snapshot.Name)
+		// Retry Count
+		retryCount := 0
+
+		if snapshot.Annotations == nil {
+			snapshot.Annotations = make(map[string]string)
+		} else if retryStr, exists := snapshot.Annotations["snapshot.reconcile.retries"]; exists {
+			if count, err := strconv.Atoi(retryStr); err == nil {
+				retryCount = count
+			}
+		}
+
+		if retryCount >= 5 && snapshotReturn.CreationTime == "N/A" {
+			log.V(1).Info("Reached retry limit for snapshot creation time", "snapshot", snapshot.Name)
+			newStatus.CreationStatus = "Failed"
+			newStatus.CreationTime = "Timeout exceeded"
+			meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{
+				Type:    "Available",
+				Status:  metav1.ConditionFalse,
+				Reason:  "Timeout",
+				Message: "Snapshot creation timed out after 5 retries",
+			})
+
+			// Only update if status has changed
+			if !statusEqual(snapshot.Status, newStatus) {
+				snapshot.Status = newStatus
+
+				if err := r.Status().Update(ctx, snapshot); err != nil {
+					if apierrors.IsConflict(err) {
+						// If there's a conflict, requeue the request
+						return ctrl.Result{Requeue: true}, nil
+					}
+					log.V(2).Error(err, "Failed to update snapshot status after timeout")
+					return ctrl.Result{}, err
+				}
+			}
+			return ctrl.Result{}, nil
+		}
+
+		// Increment and update retry count
+		retryCount++
+		snapshot.Annotations["snapshot.reconcile.retries"] = strconv.Itoa(retryCount)
+		if err := r.Update(ctx, snapshot); err != nil {
+			if apierrors.IsConflict(err) {
+				return ctrl.Result{Requeue: true}, nil
+			}
+			log.V(2).Error(err, "Failed to update snapshot annotations")
+			return ctrl.Result{RequeueAfter: 1 * time.Minute}, err
+		}
+
+		log.V(2).Info("Retrying snapshot %s for %s times", snapshot.Name, retryCount)
+
+		// Update status to indicate snapshot is in progress
+		newStatus.CreationStatus = "InProgress"
+		if snapshotReturn.CreationTime == "N/A" {
+			newStatus.CreationTime = "Creating..."
+		}
+		if !snapshotReturn.ReadyToUse {
+			newStatus.ReadyToUse = false
+		}
+
+		// Update status even if snapshot is not ready
+		if !statusEqual(snapshot.Status, newStatus) {
+			snapshot.Status = newStatus
+			if err := r.Status().Update(ctx, snapshot); err != nil {
+				if apierrors.IsConflict(err) {
+					// If there's a conflict, requeue the request
+					return ctrl.Result{Requeue: true}, nil
+				}
+				log.Error(err, "Failed to update snapshot CRD status")
+				return ctrl.Result{}, err
+			}
+		}
+
+		// Set appropriate condition
+		meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{
+			Type:    "Available",
+			Status:  metav1.ConditionFalse,
+			Reason:  "Creating",
+			Message: "Snapshot is being created",
+		})
+
+		if err := r.Status().Update(ctx, snapshot); err != nil {
+			if apierrors.IsConflict(err) {
+				return ctrl.Result{Requeue: true}, nil
+			}
+			log.Error(err, "Failed to update Snapshot status condition")
+			return ctrl.Result{}, err
+		}
+
+		log.V(2).Info("Snapshot is in progress", "snapshot", snapshot.Name, "status", newStatus.CreationStatus)
+
+		return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
 	}
 
+	// Only update if status has changed
+	if !statusEqual(snapshot.Status, newStatus) {
+		snapshot.Status = newStatus
+
+		if err := r.Status().Update(ctx, snapshot); err != nil {
+			if apierrors.IsConflict(err) {
+				// If there's a conflict, requeue the request
+				return ctrl.Result{Requeue: true}, nil
+			}
+			log.Error(err, "Failed to update snapshot CRD status")
+			return ctrl.Result{}, err
+		}
+	}
+
+	// Set success condition
 	meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{
 		Type:    "Available",
 		Status:  metav1.ConditionTrue,
-		Reason:  "Create",
-		Message: fmt.Sprintf("Snapshot in shoot %s is created successfully", snapshot.Namespace),
+		Reason:  "Created",
+		Message: "Snapshot has been successfully created and is ready",
 	})
 
 	if err := r.Status().Update(ctx, snapshot); err != nil {
-		klog.Error(err, "Failed to update Snapshot status condition")
+		if apierrors.IsConflict(err) {
+			return ctrl.Result{Requeue: true}, nil
+		}
+		log.Error(err, "Failed to update Snapshot status condition")
 		return ctrl.Result{}, err
 	}
-	if snapshot.Status.CreationTime == "N/A" {
-		return ctrl.Result{RequeueAfter: 3 * time.Minute}, nil
-	}
 
+	log.Info("Reconcile", "Snapshot has been successfully created and is ready", snapshot.Namespace)
 	return ctrl.Result{}, nil
 }
 
