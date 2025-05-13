@@ -35,7 +35,7 @@ const (
 
 // GetSecretShootKubeconfigKey returns the namespaced name of the secret
 // containing the shoot kubeconfig that corresponds to the given seed namespace.
-func GetSecretShootKubeconfigKey(ctx context.Context, c client.Client, ns string) (types.NamespacedName, error) {
+func GetSecretShootIntegratedKubeconfigKey(ctx context.Context, c client.Client, ns string) (types.NamespacedName, error) {
 	kubeconfigKey := types.NamespacedName{
 		Namespace: ns,
 	}
@@ -46,10 +46,10 @@ func GetSecretShootKubeconfigKey(ctx context.Context, c client.Client, ns string
 	}
 
 	userKubeconfigSecretIx := slices.IndexFunc(secrets.Items, func(secret corev1.Secret) bool {
-		return strings.Contains(secret.Name, "user-kubeconfig")
+		return strings.Contains(secret.Name, "user-integrated-kubeconfig")
 	})
 	if userKubeconfigSecretIx == -1 {
-		return kubeconfigKey, fmt.Errorf("secret user-kubeconfig does not exist in ns %s", ns)
+		return kubeconfigKey, fmt.Errorf("secret user-integrated-kubeconfig does not exist in ns %s", ns)
 	}
 
 	kubeconfigKey.Name = secrets.Items[userKubeconfigSecretIx].Name
@@ -58,15 +58,15 @@ func GetSecretShootKubeconfigKey(ctx context.Context, c client.Client, ns string
 
 // GetSecretShootKubeconfigObject returns the secret object containing the shoot kubeconfig
 // that corresponds to the given seed namespace.
-func GetSecretShootKubeconfigObject(ctx context.Context, c client.Client, ns string) (*corev1.Secret, error) {
-	key, err := GetSecretShootKubeconfigKey(ctx, c, ns)
+func GetSecretShootIntegratedKubeconfigObject(ctx context.Context, c client.Client, ns string) (*corev1.Secret, error) {
+	key, err := GetSecretShootIntegratedKubeconfigKey(ctx, c, ns)
 	if err != nil {
 		return nil, err
 	}
 
 	secret := &corev1.Secret{}
 	if err := c.Get(ctx, key, secret); err != nil {
-		return nil, fmt.Errorf("unable to get secret user-kubeconfig in ns %s: %v", ns, err)
+		return nil, fmt.Errorf("unable to get secret user-integrated-kubeconfig in ns %s: %v", ns, err)
 	}
 
 	return secret, nil
@@ -74,8 +74,8 @@ func GetSecretShootKubeconfigObject(ctx context.Context, c client.Client, ns str
 
 // GetSecretShootKubeconfig returns the raw shoot kubeconfig that corresponds to
 // the given seed namespace.
-func GetSecretShootKubeconfig(ctx context.Context, c client.Client, ns string) (string, error) {
-	secret, err := GetSecretShootKubeconfigObject(ctx, c, ns)
+func GetSecretShootIntegratedKubeconfig(ctx context.Context, c client.Client, ns string) (string, error) {
+	secret, err := GetSecretShootIntegratedKubeconfigObject(ctx, c, ns)
 	if err != nil {
 		return "", err
 	}

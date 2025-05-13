@@ -197,7 +197,7 @@ func (r *SyncSnapshotReconciler) ReconcileSyncSnapshot(ctx context.Context, sync
 	log.V(3).Info("Creating Shoot Client", clusterName)
 
 	// get kubeconfig
-	shootKubeconfigDataString, err := GetSecretShootKubeconfig(ctx, r.Client, namespace)
+	shootKubeconfigDataString, err := GetSecretShootIntegratedKubeconfig(ctx, r.Client, namespace)
 	if err != nil {
 		return missingSnapshots, extraSnapshots, fmt.Errorf("unable to get shoot secret data kubeconfig in ns %s: %v", clusterName, err)
 	}
@@ -313,7 +313,7 @@ func (r *SyncSnapshotReconciler) ReconcileSyncRestore(ctx context.Context,
 	clusterName := namespace[4:]
 
 	// get kubeconfig
-	shootKubeconfigDataString, err := GetSecretShootKubeconfig(ctx, c, namespace)
+	shootKubeconfigDataString, err := GetSecretShootIntegratedKubeconfig(ctx, c, namespace)
 	if err != nil {
 		return fmt.Errorf("unable to get shoot secret data kubeconfig in ns %s: %v", clusterName, err)
 	}

@@ -163,7 +163,7 @@ func (r *CreateSnapshotReconciler) ReconcileCreateSnapshot(ctx context.Context, 
 	namespace := createSnapshot.Namespace
 	clusterName := strings.TrimPrefix(namespace, "fke-")
 	// get kubeconfig
-	shootKubeconfigDataString, err := GetSecretShootKubeconfig(ctx, c, namespace)
+	shootKubeconfigDataString, err := GetSecretShootIntegratedKubeconfig(ctx, c, namespace)
 	if err != nil {
 		return SnapshotReturn, fmt.Errorf("unable to get shoot secret data kubeconfig in ns %s: %v", clusterName, err)
 	}
@@ -304,7 +304,7 @@ func (r *CreateSnapshotReconciler) DeleteSnapshot(ctx context.Context, c client.
 	namespace := DeleteSnapshot.Namespace
 	clusterName := strings.TrimPrefix(namespace, "fke-")
 	// get kubeconfig
-	shootKubeconfigDataString, err := GetSecretShootKubeconfig(ctx, c, namespace)
+	shootKubeconfigDataString, err := GetSecretShootIntegratedKubeconfig(ctx, c, namespace)
 	if err != nil {
 		return fmt.Errorf("unable to get shoot secret data kubeconfig in ns %s: %v", clusterName, err)
 	}
@@ -520,6 +520,13 @@ func (r *CreateSnapshotReconciler) handleSnapshotSuccess(ctx context.Context,
 		}
 		log.Error(err, "Failed to update Snapshot status condition")
 		return ctrl.Result{}, err
+	}
+
+	if snapshot.Annotations[SnapshotReconcileAnnotation] == "true" {
+		delete(snapshot.Annotations, SnapshotReconcileAnnotation)
+		if err := r.Update(ctx, snapshot); err != nil {
+			return ctrl.Result{Requeue: true}, err
+		}
 	}
 
 	log.Info("Reconcile", "Snapshot has been successfully created and is ready", snapshot.Namespace)

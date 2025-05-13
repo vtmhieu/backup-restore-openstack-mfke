@@ -181,7 +181,7 @@ func (r *RestorePvcReconciler) ReconcileRestorePvc(ctx context.Context, c client
 	restorePVCName := restorePvc.Name
 
 	// get kubeconfig
-	shootKubeconfigDataString, err := GetSecretShootKubeconfig(ctx, c, namespace)
+	shootKubeconfigDataString, err := GetSecretShootIntegratedKubeconfig(ctx, c, namespace)
 	if err != nil {
 		return RestorePvcReturn, fmt.Errorf("unable to get shoot secret data kubeconfig in ns %s: %v", clusterName, err)
 	}
