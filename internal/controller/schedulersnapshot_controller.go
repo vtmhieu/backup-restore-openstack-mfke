@@ -177,7 +177,7 @@ func (r *SchedulerSnapshotReconciler) ReconcileScheduleSnapshot(
 	namespace := scheduleSnapshot.Namespace
 	clusterName := namespace[4:]
 	// get kubeconfig
-	shootKubeconfigDataString, err := GetSecretShootKubeconfig(ctx, r.Client, namespace)
+	shootKubeconfigDataString, err := GetSecretShootIntegratedKubeconfig(ctx, r.Client, namespace)
 	if err != nil {
 		return requeueAfter, fmt.Errorf("unable to get shoot secret data kubeconfig in ns %s: %v", clusterName, err)
 	}

@@ -326,7 +326,7 @@ func (r *CreateKubeSnapshotReconciler) startNewBackup(
 
 	logger := log.FromContext(ctx)
 
-	shootKubeconfig, err := GetSecretShootKubeconfigKey(ctx, r.Client, create.Namespace)
+	shootKubeconfig, err := GetSecretShootIntegratedKubeconfigKey(ctx, r.Client, create.Namespace)
 	if err != nil {
 		return false, fmt.Errorf("unable to get shoot kubeconfig: %w (not a valid shoot?)", err)
 	}
