@@ -1,10 +1,59 @@
 # backup-restore-openstack-mfke
 
-// TODO(user): Add simple overview of use/purpose
+Kubebuilder-based Kubernetes operator scaffold for backing up and restoring
+PersistentVolumeClaims in OpenStack-based clusters (e.g., Cinder CSI).
 
 ## Description
 
-// TODO(user): An in-depth paragraph about your project and overview of use
+This project provides three custom resources to model a PVC backup lifecycle:
+
+- `Pvc`: inventory PVCs in a target namespace.
+- `PvSnapshot`: request snapshots for a specific PVC.
+- `RestorePvc`: restore a PVC from a previously created snapshot.
+
+The controllers are scaffolded and ready for business logic to be added; use
+this repository as a starting point to implement the actual snapshot and
+restore flows that fit your OpenStack/Kubernetes environment.
+
+### API usage and flow
+
+- `Pvc` (spec.namespaceShoot): target namespace whose PVCs you want to inventory.
+  Controller logic should list PVCs in that namespace and write their names to
+  `status.pvcNames`. This CR is mostly a helper to discover PVCs that can be
+  snapshotted.
+- `PvSnapshot` (spec.pvcName, spec.namespace): request one or more snapshots for
+  the given PVC. The reconciler should trigger your CSI snapshot logic (e.g.,
+  create a `VolumeSnapshot` or use Cinder APIs) and reflect resulting snapshot
+  names in `status.snapshotNames`.
+- `RestorePvc` (spec.snapshotName, spec.namespace): restore a new PVC from an
+  existing snapshot. The reconciler should create the PVC (and optionally a
+  pod/job to hydrate it) then surface the resulting PVC name in
+  `status.restoredPvcName`.
+
+Suggested end-to-end:
+
+1. Create a `Pvc` to inventory PVCs in a namespace.
+2. For a chosen PVC name, create a `PvSnapshot` to capture a snapshot.
+3. When you need to recover, create a `RestorePvc` pointing at the snapshot to
+   produce a new PVC.
+
+### Implementation sketch (controllers)
+
+- Add RBAC to allow listing/creating PVCs, VolumeSnapshots (if used), and
+  watching namespaces of interest.
+- In `PvcReconciler`:
+  - Fetch the CR, list PVCs in `spec.namespaceShoot`, update `status.pvcNames`.
+  - Requeue periodically to keep the inventory fresh.
+- In `PvSnapshotReconciler`:
+  - Validate `spec` and fetch the target PVC.
+  - Create snapshot resources (e.g., CSI `VolumeSnapshot`) or call OpenStack
+    Cinder APIs; record identifiers in `status.snapshotNames`.
+  - Handle idempotency: if snapshots already exist, do not recreate.
+- In `RestorePvcReconciler`:
+  - Validate `spec.snapshotName`.
+  - Create a PVC (and storage class params) from the snapshot source.
+  - Optionally wait for `Bound` before updating `status.restoredPvcName`.
+  - Consider adding finalizers to clean up intermediate resources if needed.
 
 ## Getting Started
 
@@ -96,7 +145,13 @@ kubectl apply -f https://raw.githubusercontent.com/<org>/backup-restore-openstac
 
 ## Contributing
 
-// TODO(user): Add detailed information on how you would like others to contribute to this project
+Contributions are welcome—especially around implementing the reconciliation
+logic and improving the sample CRDs.
+
+1. Fork and branch from `main`.
+2. Run `make test` (or at least `make unit-test`/`make lint` if you add them) before opening a PR.
+3. Keep PRs small and focused; include sample manifests for new fields.
+4. Update docs (this README and `config/samples`) when behavior changes.
 
 **NOTE:** Run `make help` for more information on all potential `make` targets
 
