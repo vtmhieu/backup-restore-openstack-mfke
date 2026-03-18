@@ -1,5 +1,6 @@
 # backup-restore-openstack-mfke
 
+![Main Architecture](images/image.png)
 Kubebuilder-based Kubernetes operator scaffold for backing up and restoring
 PersistentVolumeClaims in OpenStack-based clusters (e.g., Cinder CSI).
 
